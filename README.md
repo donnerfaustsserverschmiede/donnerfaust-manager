@@ -46,7 +46,22 @@ Aktiviere nur die Intents, die deine Bot-Funktionen benötigen. Teile deinen Bot
 
 Die Datenbank wird beim ersten Zugriff lokal unter `data/donnerfaust_manager.sqlite3` angelegt. Die aktuelle SQLite-Lösung ist ein einfacher Startpunkt; für ein dauerhaft gehostetes Multi-Server-Dashboard prüfen wir später gemeinsam eine passende persistente Datenbank.
 
-## Entwicklungsstand
-Die modulare Grundstruktur steht. Das Logging-Modul ist die erste funktionale Ausbaustufe; Ticketsystem, Moderation und Dashboard sind aktuell noch Gerüste und werden separat implementiert und getestet.
+## Ticketsystem (erste Ausbaustufe)
+- `/ticketpanel` — erstellt ein Ticket-Panel im aktuellen Kanal (Server-Verwaltung erforderlich).
+- `/ticket` — öffnet ein privates Support-Ticket.
+- Die Schaltfläche **Ticket erstellen** öffnet einen privaten Kanal.
+- Die Schaltfläche **Ticket schließen** löscht den Ticketkanal nach Berechtigungsprüfung.
+- Wenn vorhanden, wird die Serverrolle `Support` zum Ticket hinzugefügt; andernfalls sehen nur Ersteller und Bot den Kanal (neben Serverrollen mit übergeordneten Administratorrechten).
+- Der Bot benötigt **Kanäle verwalten** sowie Kanalzugriff und Schreibrechte. Erstelle die Rolle `Support` selbst und gib ihr nur die nötigen Rechte.
+
+## Moderation (erste Ausbaustufe)
+- `/timeout` — Timeout von 1 bis 40.320 Minuten (28 Tage).
+- `/kick` — Mitglied entfernen.
+- `/ban` — Mitglied bannen.
+- `/clear` — bis zu 100 Nachrichten im aktuellen Textkanal löschen.
+- Die Discord-Berechtigungen der aufrufenden Person werden je Befehl geprüft. Die Bot-Rolle muss über dem Zielmitglied stehen.
+
+## Entwicklungsstand und wichtige Einschränkungen
+Logging, einfache Tickets und grundlegende Moderationsbefehle sind implementiert, aber noch nicht live getestet. Das Dashboard, Ticket-Transkripte, konfigurierbare Ticket-Kategorien, Warnsystem, Anti-Spam und ausführliche Fehlerprotokollierung sind noch nicht implementiert. Nach dem Hosting müssen wir alle Befehle auf einem Testserver prüfen und Fehler beheben.
 
 Weitere Architekturhinweise: `docs/ARCHITECTURE.md`.
