@@ -133,6 +133,7 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
         request.session.clear()
         request.session["user"] = user_response.json()
         request.session["guilds"] = authorized_guilds(guild_response.json())
+        request.session["csrf"] = secrets.token_urlsafe(32)
     return RedirectResponse("/", status_code=303)
 
 
@@ -157,12 +158,18 @@ async def server_settings(request: Request, guild_id: str, saved: int = 0):
     if not guild:
         raise HTTPException(status_code=403, detail="Du darfst diesen Server nicht verwalten. Bitte melde dich neu an.")
     config = get_guild_config(int(guild_id))
-    token = request.session.get("access_token")
-    # Access tokens are intentionally not stored in a browser-visible page; get channels only when token is retained server-side.
+    # Fetch channel metadata with the bot token on the server only. Never put bot tokens
+    # or OAuth access tokens into the browser session cookie or HTML.
     channels = []
-    if token:
+    if BOT_TOKEN:
         try:
-            channels = await discord_get(f"/guilds/{guild_id}/channels", token)
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    f"{DISCORD_API}/guilds/{guild_id}/channels",
+                    headers={"Authorization": f"Bot {BOT_TOKEN}"},
+                )
+                if response.status_code == 200:
+                    channels = response.json()
         except Exception:
             channels = []
     text_channels = [c for c in channels if c.get("type") == 0]
@@ -224,9 +231,3 @@ async def save_settings(request: Request, guild_id: str, csrf: str = Form(""), l
     return RedirectResponse(f"/servers/{guild_id}?saved=1", status_code=303)
 
 
-@app.middleware("http")
-async def set_csrf(request: Request, call_next):
-    response = await call_next(request)
-    if request.session.get("user") and not request.session.get("csrf"):
-        request.session["csrf"] = secrets.token_urlsafe(32)
-    return response
