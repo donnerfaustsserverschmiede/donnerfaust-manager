@@ -22,7 +22,7 @@ class DonnerfaustBot(commands.Bot):
         # Developer Portal and confirming the bot's intended use.
         intents.members = settings.enable_members_intent
         intents.message_content = settings.enable_message_content_intent
-        super().__init__(command_prefix=commands.when_mentioned, intents=intents)
+        super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents)
 
     async def setup_hook(self) -> None:
         for extension in EXTENSIONS:
