@@ -32,6 +32,14 @@ class DonnerfaustBot(commands.Bot):
             except Exception:
                 log.exception("Could not load extension %s; continuing.", extension)
 
+        # Register slash commands with Discord so /ticket, /ticketpanel,
+        # /timeout, /kick, /ban and /clear appear in servers.
+        try:
+            synced = await self.tree.sync()
+            log.info("Synced %d global application command(s)", len(synced))
+        except Exception:
+            log.exception("Could not sync application commands.")
+
     async def on_ready(self) -> None:
         log.info("Logged in as %s (%s)", self.user, self.user.id if self.user else "?")
         log.info("Connected to %d guild(s)", len(self.guilds))
