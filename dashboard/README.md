@@ -28,3 +28,30 @@
 
 ## Umsetzungshinweis
 Das Dashboard ist derzeit **noch nicht implementiert**. Diese Datei beschreibt die verbindliche Zielarchitektur. Erst Authentifizierung, Berechtigungsprüfung und persistente Speicherung umsetzen, dann die Konfigurationsseiten. Niemals eine scheinbar funktionierende Oberfläche veröffentlichen, die Einstellungen nicht tatsächlich speichert oder an den Bot übergibt.
+
+
+## Local run / deployment configuration
+
+Install dependencies from the repository root:
+
+```bash
+pip install -r requirements.txt
+uvicorn dashboard.app:app --host 0.0.0.0 --port 8000
+```
+
+Set these environment variables in the hosting provider's private environment settings (never commit real values):
+- `DISCORD_CLIENT_ID`: Discord application's client ID.
+- `DISCORD_CLIENT_SECRET`: OAuth2 client secret from Developer Portal → OAuth2.
+- `DISCORD_TOKEN`: bot token, server-side only.
+- `DASHBOARD_BASE_URL`: public HTTPS URL of the deployed dashboard.
+- `SESSION_SECRET`: long random secret used to sign session cookies.
+- `ENABLE_MEMBERS_INTENT` and `ENABLE_MESSAGE_CONTENT_INTENT`: set only as required by bot features.
+
+In Discord Developer Portal → OAuth2, register the exact redirect URL:
+`https://YOUR-DASHBOARD-DOMAIN/callback`
+It must match `DASHBOARD_BASE_URL + /callback` exactly. Use HTTPS in production.
+
+The login route requests `identify guilds`; the invite route requests `bot applications.commands`. Users only see guilds where their OAuth2 permission bitfield contains Manage Server or Administrator.
+
+## Current implementation boundary
+The first dashboard implementation provides Discord OAuth login, a server list, an invite redirect, and a first server-settings form backed by the same SQLite module used by the bot. This is an early MVP, not production-ready: the current checkbox settings are persisted but not all are enforced by the bot yet; channel options require the bot to be present and able to fetch guild channels; ticket configuration and role/category pickers still need to be connected. Use only a test server until end-to-end authorization, data persistence and settings enforcement are verified.
