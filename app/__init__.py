@@ -1,0 +1,1 @@
+"""Donnerfaust Manager application package."""
