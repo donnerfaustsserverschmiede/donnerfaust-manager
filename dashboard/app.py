@@ -138,7 +138,7 @@ async def login(request: Request):
 @app.get("/callback")
 async def callback(request: Request, code: str = "", state: str = "", error: str = ""):
     if error:
-        return RedirectResponse("/", status_code=303)
+        raise HTTPException(status_code=400, detail=f"Discord-OAuth wurde abgebrochen oder abgelehnt: {error}. Bitte prüfe die OAuth2-Redirect-URL in Discord Developer Portal.")
     expected = request.session.pop("oauth_state", "")
     if not code or not expected or not hmac.compare_digest(expected, state):
         raise HTTPException(status_code=400, detail="Anmeldung abgelaufen oder ungültig. Bitte erneut versuchen.")
