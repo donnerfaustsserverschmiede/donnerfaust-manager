@@ -448,11 +448,14 @@ async def server_settings(request: Request, guild_id: str, saved: int = 0):
         except Exception:
             roles = []
     role_options = '<option value="">— Support-Rolle auswählen —</option>'
+    autorole_options = '<option value="">— Autorolle auswählen —</option>'
     for role in roles:
         if role.get("name") == "@everyone":
             continue
         selected = " selected" if config.get("ticket_support_role_id") == int(role["id"]) else ""
         role_options += f'<option value="{esc(role["id"])}"{selected}>{esc(role["name"])}</option>'
+        auto_selected = " selected" if config.get("autorole_role_id") == int(role["id"]) else ""
+        autorole_options += f'<option value="{esc(role["id"])}"{auto_selected}>{esc(role["name"])}</option>'
     checkboxes = [
         ("logging_message_delete", "Gelöschte Nachrichten protokollieren", True),
         ("logging_message_edit", "Bearbeitete Nachrichten protokollieren", True),
@@ -461,6 +464,7 @@ async def server_settings(request: Request, guild_id: str, saved: int = 0):
         ("logging_channel_events", "Kanaländerungen protokollieren", True),
         ("logging_role_events", "Rollenänderungen protokollieren", True),
         ("logging_voice_events", "Sprachkanalwechsel protokollieren", False),
+        ("autorole_enabled", "Autorole aktivieren", False),
         ("moderation_timeout_enabled", "Timeout-Befehl aktivieren", True),
         ("moderation_kick_enabled", "Kick-Befehl aktivieren", True),
         ("moderation_ban_enabled", "Ban-Befehl aktivieren", True),
@@ -478,8 +482,9 @@ async def server_settings(request: Request, guild_id: str, saved: int = 0):
         body += '<div class="notice">Einstellungen gespeichert.</div>'
     body += f"""<form method="post" action="/servers/{esc(guild_id)}/save"><input type="hidden" name="csrf" value="{esc(request.session.get("csrf",""))}">
 <section class="card"><div class="tag">Schublade 01</div><h2>Logging</h2><p>Wähle den Kanal für die Ereignisprotokolle. Der Bot benötigt dort Kanal ansehen, Nachrichten senden und Links einbetten.</p><label for="log_channel_id">Protokollkanal</label><select id="log_channel_id" name="log_channel_id">{options}</select>{checks}</section>
-<div class="spacer"></div><section class="card"><div class="tag">Schublade 02</div><h2>Ticketsystem</h2><p>Diese Einstellungen werden beim Erstellen neuer Tickets direkt vom Bot verwendet. Die Rollen- und Kanallisten werden über deinen Discord-Bot geladen.</p><label for="ticket_panel_channel_id">Kanal für das Ticket-Panel</label><select id="ticket_panel_channel_id" name="ticket_panel_channel_id">{ticket_panel_options}</select><label for="ticket_category_id">Ticket-Kategorie</label><select id="ticket_category_id" name="ticket_category_id">{category_options}</select><label for="ticket_support_role_id">Support-Rolle</label><select id="ticket_support_role_id" name="ticket_support_role_id">{role_options}</select><label for="ticket_welcome_message">Begrüßung im Ticket</label><textarea id="ticket_welcome_message" name="ticket_welcome_message" rows="3">{welcome}</textarea></section>
-<div class="spacer"></div><section class="card"><div class="tag">Schublade 03</div><h2>Moderation</h2><p>Die Schalter oben werden vom Bot ausgewertet. Moderationsbefehle benötigen zusätzlich die passenden Discord-Rechte für das ausführende Team und den Bot.</p></section>
+<div class="spacer"></div><section class="card"><div class="tag">Schublade 02</div><h2>Autoroles</h2><p>Diese Rolle wird neuen Mitgliedern automatisch zugewiesen. Der Bot benötigt „Rollen verwalten“, und seine höchste Rolle muss über der ausgewählten Rolle stehen.</p><label for="autorole_role_id">Rolle für neue Mitglieder</label><select id="autorole_role_id" name="autorole_role_id">{autorole_options}</select><p>Aktiviere „Autorole aktivieren“ im Logging-/Funktionsbereich weiter oben, um die Zuweisung einzuschalten.</p></section>
+<div class="spacer"></div><section class="card"><div class="tag">Schublade 03</div><h2>Ticketsystem</h2><p>Diese Einstellungen werden beim Erstellen neuer Tickets direkt vom Bot verwendet. Die Rollen- und Kanallisten werden über deinen Discord-Bot geladen.</p><label for="ticket_panel_channel_id">Kanal für das Ticket-Panel</label><select id="ticket_panel_channel_id" name="ticket_panel_channel_id">{ticket_panel_options}</select><label for="ticket_category_id">Ticket-Kategorie</label><select id="ticket_category_id" name="ticket_category_id">{category_options}</select><label for="ticket_support_role_id">Support-Rolle</label><select id="ticket_support_role_id" name="ticket_support_role_id">{role_options}</select><label for="ticket_welcome_message">Begrüßung im Ticket</label><textarea id="ticket_welcome_message" name="ticket_welcome_message" rows="3">{welcome}</textarea></section>
+<div class="spacer"></div><section class="card"><div class="tag">Schublade 04</div><h2>Moderation</h2><p>Die Schalter oben werden vom Bot ausgewertet. Moderationsbefehle benötigen zusätzlich die passenden Discord-Rechte für das ausführende Team und den Bot.</p></section>
 <div class="row"><button type="submit">Einstellungen speichern</button></div></form>"""
     return page("Servereinstellungen", body, user)
 
@@ -502,8 +507,13 @@ async def save_settings(request: Request, guild_id: str, csrf: str = Form(""), l
             set_guild_setting(int(guild_id), key, int(value))
         elif key != "log_channel_id":
             set_guild_setting(int(guild_id), key, "")
-    set_guild_setting(int(guild_id), "ticket_welcome_message", ticket_welcome_message[:1500])
     form = await request.form()
+    autorole_role_id = str(form.get("autorole_role_id", "")).strip()
+    if autorole_role_id and autorole_role_id.isdigit():
+        set_guild_setting(int(guild_id), "autorole_role_id", int(autorole_role_id))
+    else:
+        set_guild_setting(int(guild_id), "autorole_role_id", "")
+    set_guild_setting(int(guild_id), "ticket_welcome_message", ticket_welcome_message[:1500])
     checkbox_keys = [key for key in ALLOWED_SETTINGS if key.startswith("logging_") or key.startswith("moderation_") or key == "antispam_enabled"]
     for key in checkbox_keys:
         set_guild_setting(int(guild_id), key, form.get(key) == "true")
