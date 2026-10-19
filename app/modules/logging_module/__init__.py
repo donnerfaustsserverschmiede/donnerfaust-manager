@@ -191,6 +191,25 @@ class LoggingModule(commands.Cog):
         await interaction.response.send_message(f"Testmeldung wurde in {channel.mention} gesendet.", ephemeral=True)
 
     @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        """Log user messages; skip bots and the destination channel to avoid loops."""
+        if message.guild is None or message.author.bot:
+            return
+        log_channel_id = get_guild_setting(message.guild.id, "log_channel_id")
+        if log_channel_id and message.channel.id == int(log_channel_id):
+            return
+        content = message.content.strip() or "[Kein Textinhalt – möglicherweise nur Anhänge/Einbettungen]"
+        if message.attachments:
+            attachments = "\n".join(f"{item.filename}: {item.url}" for item in message.attachments[:5])
+            content += "\n**Anhänge:**\n" + attachments
+        embed = self.make_embed(
+            "Nachricht gesendet",
+            f"**Autor:** {message.author} ({message.author.id})\n**Kanal:** {message.channel.mention}\n**Inhalt:**\n{content[:2500]}\n**Nachrichten-ID:** {message.id}",
+            discord.Color.green(),
+        )
+        await self.send_log(message.guild, embed, "logging_message_create")
+
+    @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
         """Log deletions even when Discord.py no longer has the message cached."""
         if payload.guild_id is None:
@@ -257,6 +276,19 @@ class LoggingModule(commands.Cog):
             old_category = before.category.name if getattr(before, "category", None) else "Keine Kategorie"
             new_category = after.category.name if getattr(after, "category", None) else "Keine Kategorie"
             changes.append(f"**Kategorie:** {old_category} → {new_category}")
+        for attr, label in (
+            ("topic", "Thema"),
+            ("slowmode_delay", "Slowmode"),
+            ("nsfw", "NSFW"),
+            ("bitrate", "Bitrate"),
+            ("user_limit", "Nutzerlimit"),
+            ("archived", "Archiviert"),
+            ("locked", "Gesperrt"),
+        ):
+            old_value = getattr(before, attr, None)
+            new_value = getattr(after, attr, None)
+            if old_value != new_value and (old_value is not None or new_value is not None):
+                changes.append(f"**{label}:** {old_value} → {new_value}")
         if changes:
             embed = self.make_embed("Kanal geändert", f"**Kanal:** {after.name} ({after.id})\\n" + "\\n".join(changes), discord.Color.orange())
             await self.send_log(after.guild, embed, "logging_channel_events")
