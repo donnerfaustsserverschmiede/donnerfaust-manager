@@ -25,7 +25,7 @@ class DonnerfaustBot(commands.Bot):
         # without requiring extra hosting environment variables.
         intents.members = True
         intents.message_content = True
-        super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents)
+        super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents, help_command=commands.DefaultHelpCommand())
 
     async def setup_hook(self) -> None:
         for extension in EXTENSIONS:
@@ -43,6 +43,31 @@ class DonnerfaustBot(commands.Bot):
         except Exception:
             log.exception("Could not sync application commands.")
 
+    async def on_message(self, message: discord.Message) -> None:
+        """Always route incoming messages through discord.py prefix command parsing."""
+        if message.author.bot:
+            return
+        await self.process_commands(message)
+
+    @commands.command(name="ping")
+    async def ping_command(self, ctx: commands.Context) -> None:
+        """Prove that the running process receives and parses prefix commands."""
+        await ctx.reply("Pong! Donnerfaust Manager verarbeitet Textbefehle.", mention_author=False)
+
+    @commands.command(name="botstatus")
+    @commands.guild_only()
+    async def bot_status_command(self, ctx: commands.Context) -> None:
+        """Show runtime state and loaded extensions."""
+        loaded = sorted(self.extensions.keys())
+        details = "\n".join(f"• {name}" for name in loaded) or "Keine Erweiterungen geladen."
+        await ctx.reply(
+            f"**Donnerfaust Manager – Status**\n"
+            f"Online: Ja\nServer: {len(self.guilds)}\nLatenz: {round(self.latency * 1000)} ms\n"
+            f"Message Content Intent: {self.intents.message_content}\nMembers Intent: {self.intents.members}\n\n"
+            f"**Geladene Module**\n{details}",
+            mention_author=False,
+        )
+
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
         if isinstance(error, commands.CommandNotFound):
             return
@@ -51,6 +76,12 @@ class DonnerfaustBot(commands.Bot):
             return
         if isinstance(error, commands.NoPrivateMessage):
             await ctx.reply("Dieser Befehl funktioniert nur auf einem Server.", mention_author=False)
+            return
+        if isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply(f"Es fehlt eine Angabe: {error.param.name}.", mention_author=False)
+            return
+        if isinstance(error, commands.BadArgument):
+            await ctx.reply("Die Angabe wurde nicht erkannt. Erwähne den Kanal, z. B. !setlogchannel #df-manager-logs.", mention_author=False)
             return
         log.exception("Command failed: %s", getattr(ctx.command, "qualified_name", "unknown"), exc_info=error)
         try:
