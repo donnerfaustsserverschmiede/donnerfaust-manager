@@ -60,7 +60,20 @@ class LoggingModule(commands.Cog):
             await ctx.reply("Mir fehlen in diesem Kanal die Rechte Nachrichten senden und Links einbetten.")
             return
         set_guild_setting(ctx.guild.id, "log_channel_id", channel.id)
-        await ctx.reply(f"Logging-Kanal wurde auf {channel.mention} gesetzt.")
+        # Selecting a logging channel enables the core logging events by default.
+        # Administrators can turn individual events off later in the dashboard.
+        for key in (
+            "logging_message_delete",
+            "logging_message_edit",
+            "logging_member_join",
+            "logging_member_leave",
+            "logging_channel_events",
+            "logging_role_events",
+            "logging_voice_events",
+        ):
+            if get_guild_setting(ctx.guild.id, key) is None:
+                set_guild_setting(ctx.guild.id, key, True)
+        await ctx.reply(f"Logging-Kanal wurde auf {channel.mention} gesetzt. Die Logging-Ereignisse sind standardmäßig aktiviert.")
 
     @commands.command(name="logstatus")
     @commands.guild_only()
@@ -131,7 +144,22 @@ class LoggingModule(commands.Cog):
             await interaction.response.send_message("Mir fehlen in diesem Kanal Rechte: Kanal ansehen, Nachrichten senden und Links einbetten.", ephemeral=True)
             return
         set_guild_setting(guild.id, "log_channel_id", channel.id)
-        await interaction.response.send_message(f"Logging-Kanal wurde auf {channel.mention} gesetzt.", ephemeral=True)
+        # Enable all event types when a server configures logging for the first time.
+        for key in (
+            "logging_message_delete",
+            "logging_message_edit",
+            "logging_member_join",
+            "logging_member_leave",
+            "logging_channel_events",
+            "logging_role_events",
+            "logging_voice_events",
+        ):
+            if get_guild_setting(guild.id, key) is None:
+                set_guild_setting(guild.id, key, True)
+        await interaction.response.send_message(
+            f"Logging-Kanal wurde auf {channel.mention} gesetzt. Die Logging-Ereignisse sind standardmäßig aktiviert.",
+            ephemeral=True,
+        )
 
     @app_commands.command(name="logtest", description="Sendet eine Testmeldung in den Logging-Kanal.")
     @app_commands.checks.has_permissions(manage_guild=True)
