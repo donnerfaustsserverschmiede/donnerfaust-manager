@@ -1,4 +1,5 @@
 """Configurable event logging, isolated from other features."""
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -44,22 +45,38 @@ class LoggingModule(commands.Cog):
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Could not send a log message in channel %s (guild %s)", channel.id, guild.id)
 
-    async def audit_actor(self, guild: discord.Guild, target_id: int, actions: tuple[discord.AuditLogAction, ...]) -> str:
-        """Best-effort actor lookup for recent administrative changes."""
+    async def audit_actor(
+        self,
+        guild: discord.Guild,
+        target_id: int | None,
+        actions: tuple[discord.AuditLogAction, ...],
+        channel_id: int | None = None,
+    ) -> str:
+        """Resolve an actor from recent audit entries; Discord may publish entries with a short delay."""
         me = guild.me
         if me is None or not me.guild_permissions.view_audit_log:
             return "Nicht ermittelbar (Berechtigung „Audit-Log ansehen“ fehlt)"
-        try:
-            async for entry in guild.audit_logs(limit=15):
-                if entry.action not in actions:
-                    continue
-                if getattr(entry.target, "id", None) != target_id:
-                    continue
-                if (discord.utils.utcnow() - entry.created_at).total_seconds() > 30:
-                    continue
-                return f"{entry.user} ({entry.user.id})" if entry.user else "Unbekannt"
-        except (discord.Forbidden, discord.HTTPException):
-            log.exception("Could not read audit log for guild %s", guild.id)
+        for attempt in range(3):
+            try:
+                async for entry in guild.audit_logs(limit=25):
+                    if entry.action not in actions:
+                        continue
+                    age = (discord.utils.utcnow() - entry.created_at).total_seconds()
+                    if age > 45:
+                        continue
+                    entry_target_id = getattr(entry.target, "id", None)
+                    if target_id is not None and entry_target_id != target_id:
+                        continue
+                    if channel_id is not None:
+                        extra_channel = getattr(getattr(entry, "extra", None), "channel", None)
+                        if getattr(extra_channel, "id", None) != channel_id:
+                            continue
+                    return f"{entry.user} ({entry.user.id})" if entry.user else "Unbekannt"
+            except (discord.Forbidden, discord.HTTPException):
+                log.exception("Could not read audit log for guild %s", guild.id)
+                return "Nicht ermittelbar (Audit-Log konnte nicht gelesen werden)"
+            if attempt < 2:
+                await asyncio.sleep(1.0)
         return "Nicht ermittelbar (kein passender Audit-Log-Eintrag)"
     @staticmethod
     def make_embed(title: str, description: str, color: discord.Color) -> discord.Embed:
@@ -245,9 +262,12 @@ class LoggingModule(commands.Cog):
         content = message.content.strip() if message is not None else ""
         if not content:
             content = "[Inhalt nicht verfügbar – Nachricht war nicht im Cache oder Message Content war nicht verfügbar.]"
-        actor = "Nicht ermittelbar (Nachricht nicht im Cache)"
-        if message is not None:
-            actor = await self.audit_actor(guild, message.author.id, (discord.AuditLogAction.message_delete,))
+        actor = await self.audit_actor(
+            guild,
+            message.author.id if message is not None else None,
+            (discord.AuditLogAction.message_delete,),
+            channel_id=payload.channel_id,
+        )
         embed = self.make_embed(
             "Nachricht gelöscht",
             f"**Gelöscht von:** {actor}\n**Nachrichtenautor:** {author} ({author_id})\n**Kanal:** {channel_name}\n**Inhalt:**\n{content[:2200]}\n**Nachrichten-ID:** {payload.message_id}",
