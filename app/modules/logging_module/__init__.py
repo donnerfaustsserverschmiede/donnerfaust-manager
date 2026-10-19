@@ -185,12 +185,31 @@ class LoggingModule(commands.Cog):
         await interaction.response.send_message(f"Testmeldung wurde in {channel.mention} gesendet.", ephemeral=True)
 
     @commands.Cog.listener()
-    async def on_message_delete(self, message: discord.Message) -> None:
-        if message.guild is None or message.author.bot:
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        """Log deletions even when Discord.py no longer has the message cached."""
+        if payload.guild_id is None:
             return
-        content = message.content.strip() or "[Kein Text verfügbar – möglicherweise fehlen Message Content Intents oder es war nur ein Anhang.]"
-        embed = self.make_embed("Nachricht gelöscht", f"**Autor:** {message.author} ({message.author.id})\n**Kanal:** {message.channel}\n**Inhalt:**\n{content[:2500]}", discord.Color.red())
-        await self.send_log(message.guild, embed, "logging_message_delete")
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            log.warning("Delete event received for uncached guild %s", payload.guild_id)
+            return
+        message = payload.cached_message
+        if message is not None and message.author.bot:
+            return
+        author = str(message.author) if message is not None else "Unbekannter Autor (Nachricht nicht im Cache)"
+        author_id = str(message.author.id) if message is not None else "unbekannt"
+        channel = guild.get_channel(payload.channel_id)
+        channel_name = getattr(channel, "mention", f"<#{payload.channel_id}>")
+        content = (message.content.strip() if message is not None else "")
+        if not content:
+            content = "[Inhalt nicht verfügbar – Discord.py hatte die Nachricht nicht im Cache oder Message Content war nicht verfügbar.]"
+        embed = self.make_embed(
+            "Nachricht gelöscht",
+            f"**Autor:** {author} ({author_id})\\n**Kanal:** {channel_name}\\n**Inhalt:**\\n{content[:2500]}\\n**Nachrichten-ID:** {payload.message_id}",
+            discord.Color.red(),
+        )
+        log.info("Message deletion event received: guild=%s channel=%s message=%s cached=%s", payload.guild_id, payload.channel_id, payload.message_id, message is not None)
+        await self.send_log(guild, embed, "logging_message_delete")
 
     @commands.Cog.listener()
     async def on_bulk_message_delete(self, messages: list[discord.Message]) -> None:
