@@ -50,6 +50,15 @@ async def start_discord_bot():
         return
     bot_instance = DonnerfaustBot()
     bot_task = asyncio.create_task(bot_instance.start(BOT_TOKEN), name="donnerfaust-discord-bot")
+    def report_bot_exit(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error:
+            log.error("Discord-Bot-Task wurde unerwartet beendet: %s", error, exc_info=(type(error), error, error.__traceback__))
+        else:
+            log.error("Discord-Bot-Task wurde beendet; Dashboard läuft ohne Bot weiter.")
+    bot_task.add_done_callback(report_bot_exit)
     await asyncio.sleep(0)
     log.info("Discord-Bot wird im Hintergrund gestartet.")
 
