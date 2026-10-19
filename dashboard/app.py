@@ -93,6 +93,19 @@ def init_accounts():
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             last_login TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS platform_users (
+            discord_id TEXT PRIMARY KEY, username TEXT NOT NULL, global_name TEXT NOT NULL DEFAULT '',
+            avatar TEXT NOT NULL DEFAULT '', is_admin INTEGER NOT NULL DEFAULT 0,
+            is_banned INTEGER NOT NULL DEFAULT 0, ban_reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_login TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS platform_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, guild_id TEXT NOT NULL,
+            guild_name TEXT NOT NULL, actor_id TEXT NOT NULL DEFAULT '', actor_name TEXT NOT NULL DEFAULT '',
+            details TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        conn.execute("INSERT OR IGNORE INTO platform_users(discord_id,username,is_admin) VALUES(?,?,1)",
+                     ("528084214357295114", "Donnerfaust Master"))
 
 
 def upsert_account(user: dict[str, Any]):
@@ -105,6 +118,13 @@ def upsert_account(user: dict[str, Any]):
             avatar=excluded.avatar, last_login=CURRENT_TIMESTAMP""",
             (str(user["id"]), user.get("username", "Discord"),
              user.get("global_name") or "", user.get("avatar") or ""))
+        with db_connect() as conn:
+            conn.execute("""INSERT INTO platform_users(discord_id,username,global_name,avatar,last_login)
+                VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+                ON CONFLICT(discord_id) DO UPDATE SET username=excluded.username,
+                global_name=excluded.global_name, avatar=excluded.avatar, last_login=CURRENT_TIMESTAMP""",
+                (str(user["id"]), user.get("username", "Discord"),
+                 user.get("global_name") or "", user.get("avatar") or ""))
 
 
 def page(title: str, body: str, user: dict[str, Any] | None = None) -> str:
@@ -121,10 +141,15 @@ def page(title: str, body: str, user: dict[str, Any] | None = None) -> str:
         body = """<section class="login-screen"><div class="login-brand">⚡ DONNERFAUST <b>MANAGER</b></div><div class="login-mark">DF</div><h1>Willkommen</h1><p>Melde dich mit Discord an, um den Donnerfaust Manager zu betreten.</p><a class="button discord login-button" href="/login">Mit Discord anmelden</a></section>"""
     sidebar_html = ""
     if user:
-        sidebar_html = """<aside class="dashboard-sidebar"><div class="sidebar-server"><span class="server-dot">DF</span><span>Donnerfaust Manager<small>Dashboard</small></span></div><div class="sidebar-label">ÜBERSICHT</div><a class="side-link" href="/">⌂ <span>Startseite</span></a><a class="side-link" href="/servers">▦ <span>Server auswählen</span></a><div class="sidebar-label">BOT-FUNKTIONEN</div><a class="side-link" href="/features/logging">◷ <span>Logging</span></a><a class="side-link" href="/features/tickets">▤ <span>Ticketsystem</span></a><a class="side-link" href="/features/moderation">♢ <span>Moderation</span></a><div class="sidebar-bottom"><a class="side-link" href="/profile">◉ <span>Mein Konto</span></a><a class="side-link" href="/logout">↪ <span>Abmelden</span></a></div></aside>"""
+        sidebar_html = """<aside class="dashboard-sidebar"><div class="sidebar-server"><span class="server-dot">DF</span><span>Donnerfaust Manager<small>Dashboard</small></span></div><div class="sidebar-label">ÜBERSICHT</div><a class="side-link" href="/">⌂ <span>Startseite</span></a><a class="side-link" href="/servers">▦ <span>Server auswählen</span></a>{admin_link}<div class="sidebar-label">BOT-FUNKTIONEN</div><a class="side-link" href="/features/logging">◷ <span>Logging</span></a><a class="side-link" href="/features/tickets">▤ <span>Ticketsystem</span></a><a class="side-link" href="/features/moderation">♢ <span>Moderation</span></a><div class="sidebar-bottom"><a class="side-link" href="/profile">◉ <span>Mein Konto</span></a><a class="side-link" href="/logout">↪ <span>Abmelden</span></a></div></aside>"""
+    admin_link = '<a class="side-link" href="/admin">⚙ <span>Admin-Center</span></a>' if is_platform_admin(user) else ""
+    if user and admin_link:
+        sidebar_html = sidebar_html.replace("{admin_link}", admin_link)
+    else:
+        sidebar_html = sidebar_html.replace("{admin_link}", "")
     header = ""
     if user:
-        header = f'<header><details class="menu" id="main-menu"><summary aria-label="Menü öffnen">☰</summary><div class="menu-panel"><div class="menu-head"><span class="brand">⚡ DONNERFAUST <b>MANAGER</b></span><button type="button" class="menu-close" onclick="document.getElementById(\'main-menu\').open=false" aria-label="Menü schließen">×</button></div><nav><a href="/">Startseite <span>›</span></a><a href="/features/tickets">Ticketsystem <span>›</span></a><a href="/features/moderation">Moderation <span>›</span></a><a href="/features/logging">Logging <span>›</span></a><a href="/servers">Meine Server <span>›</span></a></nav><div class="menu-bottom"><a href="/profile">Mein Konto</a><a href="/logout">Abmelden</a></div></div></details><div class="brand">⚡ DONNERFAUST <b>MANAGER</b></div><div class="header-spacer"></div>{user_html}</header>'
+        header = f'<header><details class="menu" id="main-menu"><summary aria-label="Menü öffnen">☰</summary><div class="menu-panel"><div class="menu-head"><span class="brand">⚡ DONNERFAUST <b>MANAGER</b></span><button type="button" class="menu-close" onclick="document.getElementById(\'main-menu\').open=false" aria-label="Menü schließen">×</button></div><nav><a href="/">Startseite <span>›</span></a><a href="/features/tickets">Ticketsystem <span>›</span></a><a href="/features/moderation">Moderation <span>›</span></a><a href="/features/logging">Logging <span>›</span></a><a href="/servers">Meine Server <span>›</span></a>{'<a href="/admin">Admin-Center <span>›</span></a>' if is_platform_admin(user) else ''}</nav><div class="menu-bottom"><a href="/profile">Mein Konto</a><a href="/logout">Abmelden</a></div></div></details><div class="brand">⚡ DONNERFAUST <b>MANAGER</b></div><div class="header-spacer"></div>{user_html}</header>'
     return f"""<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)} · Donnerfaust Manager</title><style>
 :root{{--bg:#f3f5f9;--panel:#ffffff;--gold:#e3b84d;--blue:#5865f2;--text:#202938;--muted:#687589;--line:#e1e6ef;--navy:#101b2d}}
@@ -214,11 +239,92 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
         guild_response.raise_for_status()
         user_data = user_response.json()
         upsert_account(user_data)
+        account = platform_user(str(user_data["id"]))
+        if account and account["is_banned"] and str(user_data["id"]) != "528084214357295114":
+            raise HTTPException(status_code=403, detail="Dein Zugang zum Donnerfaust Manager ist gesperrt.")
         request.session.clear()
         request.session["user"] = user_data
         request.session["guilds"] = authorized_guilds(guild_response.json())
         request.session["csrf"] = secrets.token_urlsafe(32)
     return RedirectResponse("/", status_code=303)
+
+
+def platform_user(user_id: str):
+    init_accounts()
+    with db_connect() as conn:
+        return conn.execute("SELECT * FROM platform_users WHERE discord_id=?", (str(user_id),)).fetchone()
+
+
+def is_master(user: dict[str, Any]) -> bool:
+    return str(user.get("id", "")) == "528084214357295114"
+
+
+def is_platform_admin(user: dict[str, Any] | None) -> bool:
+    if not user:
+        return False
+    if is_master(user):
+        return True
+    row = platform_user(str(user.get("id", "")))
+    return bool(row and row["is_admin"] and not row["is_banned"])
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def platform_admin(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not is_platform_admin(user):
+        raise HTTPException(status_code=403, detail="Nur Plattform-Admins haben Zugriff.")
+    init_accounts()
+    with db_connect() as conn:
+        users = conn.execute("SELECT * FROM platform_users ORDER BY last_login DESC LIMIT 300").fetchall()
+        events = conn.execute("SELECT * FROM platform_events ORDER BY id DESC LIMIT 100").fetchall()
+    body = '<div class="tag">Plattformverwaltung</div><h1>Admin-Center</h1><p>Plattformkonten, Adminrechte, Sperren und Bot-Serverereignisse.</p>'
+    body += '<section class="card"><h2>Konten</h2><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><tr><th align="left">Discord-ID / Name</th><th>Status</th><th>Aktionen</th></tr>'
+    for row in users:
+        uid = esc(row["discord_id"]); name = esc(row["global_name"] or row["username"])
+        status = "Master" if uid == "528084214357295114" else ("Admin" if row["is_admin"] else "Nutzer")
+        if row["is_banned"]: status += " · Gesperrt"
+        actions = ""
+        if is_master(user) and uid != "528084214357295114":
+            actions += f'<form method="post" action="/admin/user/{uid}" style="display:inline"><input type="hidden" name="csrf" value="{esc(request.session.get("csrf",""))}"><input type="hidden" name="action" value="{"demote" if row["is_admin"] else "promote"}"><button type="submit">{"Admin entziehen" if row["is_admin"] else "Zum Admin machen"}</button></form> '
+        if uid != "528084214357295114" and not row["is_admin"]:
+            actions += f'<form method="post" action="/admin/user/{uid}" style="display:inline"><input type="hidden" name="csrf" value="{esc(request.session.get("csrf",""))}"><input type="hidden" name="action" value="{"unban" if row["is_banned"] else "ban"}"><input type="text" name="reason" placeholder="Sperrgrund (optional)" style="max-width:180px"><button type="submit">{"Entsperren" if row["is_banned"] else "Sperren"}</button></form>'
+        body += f'<tr><td style="padding:12px 6px;border-bottom:1px solid var(--line)">{name}<br><small>{uid}</small></td><td>{esc(status)}</td><td>{actions or "—"}</td></tr>'
+    body += '</table></div></section><div class="spacer"></div><section class="card"><h2>Bot-Serverereignisse</h2><p>Beim Hinzufügen wird der Einladende nur angezeigt, wenn Discord ihn über das Audit-Log freigibt. Beim Entfernen ist der Auslöser nicht immer verfügbar.</p><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><tr><th align="left">Zeit</th><th>Aktion</th><th align="left">Server</th><th align="left">Auslöser</th></tr>'
+    for event in events:
+        body += f'<tr><td style="padding:9px 5px;border-bottom:1px solid var(--line)">{esc(event["created_at"])}</td><td>{esc(event["event_type"])}</td><td>{esc(event["guild_name"])}<br><small>{esc(event["guild_id"])}</small></td><td>{esc(event["actor_name"] or "Nicht ermittelbar")}</td></tr>'
+    body += '</table></div></section>'
+    return page("Admin-Center", body, user)
+
+
+@app.post("/admin/user/{target_id}")
+async def platform_user_action(request: Request, target_id: str, csrf: str = Form(""), action: str = Form(""), reason: str = Form("")):
+    user = current_user(request)
+    if not user or not is_platform_admin(user):
+        raise HTTPException(status_code=403, detail="Nur Plattform-Admins dürfen diese Aktion ausführen.")
+    expected = request.session.get("csrf", "")
+    if not expected or not hmac.compare_digest(expected, csrf):
+        raise HTTPException(status_code=403, detail="Sicherheitsprüfung fehlgeschlagen.")
+    if target_id == "528084214357295114":
+        raise HTTPException(status_code=403, detail="Das Master-Konto ist unveränderlich.")
+    target = platform_user(target_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Konto nicht gefunden.")
+    if action in {"promote", "demote"}:
+        if not is_master(user):
+            raise HTTPException(status_code=403, detail="Nur der Master darf Plattform-Admins verwalten.")
+        with db_connect() as conn:
+            conn.execute("UPDATE platform_users SET is_admin=? WHERE discord_id=?", (1 if action == "promote" else 0, target_id))
+    elif action in {"ban", "unban"}:
+        if target["is_admin"]:
+            raise HTTPException(status_code=403, detail="Admins können nur vom Master geändert werden.")
+        with db_connect() as conn:
+            conn.execute("UPDATE platform_users SET is_banned=?, ban_reason=? WHERE discord_id=?",
+                         (1 if action == "ban" else 0, reason[:500] if action == "ban" else "", target_id))
+    else:
+        raise HTTPException(status_code=400, detail="Unbekannte Aktion.")
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.get("/profile", response_class=HTMLResponse)
