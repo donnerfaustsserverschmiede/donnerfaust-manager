@@ -46,7 +46,6 @@ class PlatformAudit(commands.Cog):
             pass
         return "", "Nicht ermittelbar"
 
-    @commands.Cog.listener()
     async def _send_central_log(self, title: str, description: str, color: discord.Color) -> None:
         channel = self.bot.get_channel(CENTRAL_LOG_CHANNEL_ID)
         if channel is None:
@@ -66,14 +65,14 @@ class PlatformAudit(commands.Cog):
     async def on_guild_join(self, guild: discord.Guild):
         actor_id, actor_name = await self._audit_actor(guild, discord.AuditLogAction.bot_add, self.bot.user.id if self.bot.user else 0)
         record_event("bot_added", guild.id, guild.name, actor_id, actor_name, "Bot wurde einem Discord-Server hinzugefügt.")
-        await self._send_central_log("DF-Manager hinzugefügt", f"**Server:** {guild.name} ({guild.id})\\n**Eingeladen von:** {actor_name}"+(f" ({actor_id})" if actor_id else ""), discord.Color.green())
+        await self._send_central_log("DF-Manager hinzugefügt", f"**Server:** {guild.name}", discord.Color.green())
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         # Discord does not reliably expose the remover after the bot has left.
         record_event("bot_removed", guild.id, guild.name, "", "Nicht ermittelbar",
                      "Bot hat den Server verlassen oder wurde entfernt; Discord lieferte keinen zuverlässig prüfbaren Auslöser.")
-        await self._send_central_log("DF-Manager hat Server verlassen", f"**Server:** {guild.name} ({guild.id})\\n**Auslöser:** Nicht zuverlässig ermittelbar", discord.Color.red())
+        await self._send_central_log("DF-Manager hat Server verlassen", f"**Server:** {guild.name}", discord.Color.red())
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PlatformAudit(bot))
