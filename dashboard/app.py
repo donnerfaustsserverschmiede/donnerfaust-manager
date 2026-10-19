@@ -301,10 +301,34 @@ async def server_settings(request: Request, guild_id: str, saved: int = 0):
         except Exception:
             channels = []
     text_channels = [c for c in channels if c.get("type") == 0]
+    category_channels = [c for c in channels if c.get("type") == 4]
     options = '<option value="">— Kanal auswählen —</option>'
     for channel in text_channels:
         selected = " selected" if config.get("log_channel_id") == int(channel["id"]) else ""
         options += f'<option value="{esc(channel["id"])}"{selected}>#{esc(channel["name"])}</option>'
+    ticket_panel_options = '<option value="">— Ticket-Panel-Kanal auswählen —</option>'
+    for channel in text_channels:
+        selected = " selected" if config.get("ticket_panel_channel_id") == int(channel["id"]) else ""
+        ticket_panel_options += f'<option value="{esc(channel["id"])}"{selected}>#{esc(channel["name"])}</option>'
+    category_options = '<option value="">— Kategorie automatisch erstellen —</option>'
+    for channel in category_channels:
+        selected = " selected" if config.get("ticket_category_id") == int(channel["id"]) else ""
+        category_options += f'<option value="{esc(channel["id"])}"{selected}>{esc(channel["name"])}</option>'
+    roles = []
+    if BOT_TOKEN:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                role_response = await client.get(f"{DISCORD_API}/guilds/{guild_id}/roles", headers={"Authorization": f"Bot {BOT_TOKEN}"})
+                if role_response.status_code == 200:
+                    roles = role_response.json()
+        except Exception:
+            roles = []
+    role_options = '<option value="">— Support-Rolle auswählen —</option>'
+    for role in roles:
+        if role.get("name") == "@everyone":
+            continue
+        selected = " selected" if config.get("ticket_support_role_id") == int(role["id"]) else ""
+        role_options += f'<option value="{esc(role["id"])}"{selected}>{esc(role["name"])}</option>'
     checkboxes = [
         ("logging_message_delete", "Gelöschte Nachrichten protokollieren", True),
         ("logging_message_edit", "Bearbeitete Nachrichten protokollieren", True),
@@ -330,14 +354,14 @@ async def server_settings(request: Request, guild_id: str, saved: int = 0):
         body += '<div class="notice">Einstellungen gespeichert.</div>'
     body += f"""<form method="post" action="/servers/{esc(guild_id)}/save"><input type="hidden" name="csrf" value="{esc(request.session.get("csrf",""))}">
 <section class="card"><div class="tag">Schublade 01</div><h2>Logging</h2><p>Wähle den Kanal für die Ereignisprotokolle. Der Bot benötigt dort Kanal ansehen, Nachrichten senden und Links einbetten.</p><label for="log_channel_id">Protokollkanal</label><select id="log_channel_id" name="log_channel_id">{options}</select>{checks}</section>
-<div class="spacer"></div><section class="card"><div class="tag">Schublade 02</div><h2>Ticketsystem</h2><p>Die erweiterten Ticket-Einstellungen werden schrittweise an diese Konfiguration angebunden.</p><label for="ticket_welcome_message">Begrüßung im Ticket</label><textarea id="ticket_welcome_message" name="ticket_welcome_message" rows="3">{welcome}</textarea></section>
-<div class="spacer"></div><section class="card"><div class="tag">Schublade 03</div><h2>Moderation</h2><p>Hier werden die Moderationsoptionen angezeigt. Die Durchsetzung aller Schalter im Bot folgt als separater Integrationsschritt.</p></section>
+<div class="spacer"></div><section class="card"><div class="tag">Schublade 02</div><h2>Ticketsystem</h2><p>Diese Einstellungen werden beim Erstellen neuer Tickets direkt vom Bot verwendet. Die Rollen- und Kanallisten werden über deinen Discord-Bot geladen.</p><label for="ticket_panel_channel_id">Kanal für das Ticket-Panel</label><select id="ticket_panel_channel_id" name="ticket_panel_channel_id">{ticket_panel_options}</select><label for="ticket_category_id">Ticket-Kategorie</label><select id="ticket_category_id" name="ticket_category_id">{category_options}</select><label for="ticket_support_role_id">Support-Rolle</label><select id="ticket_support_role_id" name="ticket_support_role_id">{role_options}</select><label for="ticket_welcome_message">Begrüßung im Ticket</label><textarea id="ticket_welcome_message" name="ticket_welcome_message" rows="3">{welcome}</textarea></section>
+<div class="spacer"></div><section class="card"><div class="tag">Schublade 03</div><h2>Moderation</h2><p>Die Schalter oben werden vom Bot ausgewertet. Moderationsbefehle benötigen zusätzlich die passenden Discord-Rechte für das ausführende Team und den Bot.</p></section>
 <div class="row"><button type="submit">Einstellungen speichern</button></div></form>"""
     return page("Servereinstellungen", body, user)
 
 
 @app.post("/servers/{guild_id}/save")
-async def save_settings(request: Request, guild_id: str, csrf: str = Form(""), log_channel_id: str = Form(""), ticket_welcome_message: str = Form("Hallo! Beschreibe bitte dein Anliegen.")):
+async def save_settings(request: Request, guild_id: str, csrf: str = Form(""), log_channel_id: str = Form(""), ticket_panel_channel_id: str = Form(""), ticket_category_id: str = Form(""), ticket_support_role_id: str = Form(""), ticket_welcome_message: str = Form("Hallo! Beschreibe bitte dein Anliegen.")):
     user = current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -347,10 +371,13 @@ async def save_settings(request: Request, guild_id: str, csrf: str = Form(""), l
     expected = request.session.get("csrf", "")
     if not expected or not hmac.compare_digest(expected, csrf):
         raise HTTPException(status_code=403, detail="Sicherheitsprüfung fehlgeschlagen. Seite neu laden.")
-    if log_channel_id:
-        if not log_channel_id.isdigit():
-            raise HTTPException(status_code=422, detail="Ungültige Kanal-ID.")
-        set_guild_setting(int(guild_id), "log_channel_id", int(log_channel_id))
+    for key, value in (("log_channel_id", log_channel_id), ("ticket_panel_channel_id", ticket_panel_channel_id), ("ticket_category_id", ticket_category_id), ("ticket_support_role_id", ticket_support_role_id)):
+        if value:
+            if not value.isdigit():
+                raise HTTPException(status_code=422, detail="Ungültige Kanal- oder Rollen-ID.")
+            set_guild_setting(int(guild_id), key, int(value))
+        elif key != "log_channel_id":
+            set_guild_setting(int(guild_id), key, "")
     set_guild_setting(int(guild_id), "ticket_welcome_message", ticket_welcome_message[:1500])
     form = await request.form()
     checkbox_keys = [key for key in ALLOWED_SETTINGS if key.startswith("logging_") or key.startswith("moderation_") or key == "antispam_enabled"]
