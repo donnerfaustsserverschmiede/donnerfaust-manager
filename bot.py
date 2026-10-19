@@ -20,8 +20,11 @@ class DonnerfaustBot(commands.Bot):
         intents = discord.Intents.default()
         # Enable privileged intents only after enabling them in the Discord
         # Developer Portal and confirming the bot's intended use.
-        intents.members = settings.enable_members_intent
-        intents.message_content = settings.enable_message_content_intent
+        # These intents are enabled in the Discord Developer Portal for this bot.
+        # Enable them explicitly here so prefix commands and member event logging work
+        # without requiring extra hosting environment variables.
+        intents.members = True
+        intents.message_content = True
         super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents)
 
     async def setup_hook(self) -> None:
@@ -39,6 +42,21 @@ class DonnerfaustBot(commands.Bot):
             log.info("Synced %d global application command(s)", len(synced))
         except Exception:
             log.exception("Could not sync application commands.")
+
+    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
+        if isinstance(error, commands.CommandNotFound):
+            return
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.reply("Du brauchst die Berechtigung „Server verwalten“, um diesen Befehl zu nutzen.", mention_author=False)
+            return
+        if isinstance(error, commands.NoPrivateMessage):
+            await ctx.reply("Dieser Befehl funktioniert nur auf einem Server.", mention_author=False)
+            return
+        log.exception("Command failed: %s", getattr(ctx.command, "qualified_name", "unknown"), exc_info=error)
+        try:
+            await ctx.reply("Der Befehl ist auf einen Fehler gelaufen. Der Fehler wurde protokolliert.", mention_author=False)
+        except discord.HTTPException:
+            pass
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s (%s)", self.user, self.user.id if self.user else "?")
