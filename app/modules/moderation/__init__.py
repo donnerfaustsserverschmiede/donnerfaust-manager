@@ -58,15 +58,8 @@ class ModerationModule(commands.Cog):
             await interaction.response.send_message("Ich kann dieses Mitglied wegen der Rollen-Hierarchie nicht timeouten.", ephemeral=True)
             return
         try:
-            await member.timeout(discord.utils.utcnow() + discord.timedelta(minutes=minuten), reason=f"{interaction.user}: {grund}")
-        except AttributeError:
-            from datetime import timedelta
-            try:
-                await member.timeout(discord.utils.utcnow() + timedelta(minutes=minuten), reason=f"{interaction.user}: {grund}")
-            except discord.Forbidden:
-                await interaction.response.send_message("Mir fehlt die Berechtigung oder meine Rolle ist zu niedrig.", ephemeral=True)
-                return
-        except discord.Forbidden:
+            await member.timeout(discord.utils.utcnow() + timedelta(minutes=minuten), reason=f"{interaction.user}: {grund}")
+        except (discord.Forbidden, discord.HTTPException):
             await interaction.response.send_message("Mir fehlt die Berechtigung oder meine Rolle ist zu niedrig.", ephemeral=True)
             return
         await interaction.response.send_message(f"{member.mention} wurde für {minuten} Minute(n) timeoutet. Grund: {grund}")
