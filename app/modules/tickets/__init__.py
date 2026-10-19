@@ -45,13 +45,22 @@ class TicketsModule(commands.Cog):
         if not interaction.guild or not isinstance(interaction.channel, discord.TextChannel):
             await interaction.response.send_message("Dieser Befehl funktioniert nur in einem Server-Textkanal.", ephemeral=True)
             return
+        target_id = get_guild_setting(interaction.guild.id, "ticket_panel_channel_id")
+        target = interaction.guild.get_channel(int(target_id)) if target_id else interaction.channel
+        if not isinstance(target, discord.TextChannel):
+            await interaction.response.send_message("Der konfigurierte Ticket-Panel-Kanal ist nicht verfügbar. Prüfe die Einstellungen im Dashboard.", ephemeral=True)
+            return
+        permissions = target.permissions_for(interaction.guild.me)
+        if not permissions.send_messages or not permissions.embed_links:
+            await interaction.response.send_message("Im Zielkanal fehlen mir die Rechte Nachrichten senden und Links einbetten.", ephemeral=True)
+            return
         embed = discord.Embed(
             title="🎫 Donnerfaust Support",
             description="Du brauchst Hilfe? Klicke auf **Ticket erstellen**, um einen privaten Kanal mit dem Support-Team zu öffnen.",
             color=discord.Color.gold(),
         )
-        await interaction.channel.send(embed=embed, view=TicketPanelView())
-        await interaction.response.send_message("Ticket-Panel wurde erstellt.", ephemeral=True)
+        await target.send(embed=embed, view=TicketPanelView())
+        await interaction.response.send_message(f"Ticket-Panel wurde in {target.mention} erstellt.", ephemeral=True)
 
     @app_commands.command(name="ticket", description="Öffnet ein privates Support-Ticket.")
     async def ticket(self, interaction: discord.Interaction) -> None:
@@ -79,10 +88,18 @@ async def create_ticket(interaction: discord.Interaction) -> None:
     if existing:
         await interaction.response.send_message(f"Du hast bereits ein offenes Ticket: {existing.mention}", ephemeral=True)
         return
-    category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+    category_id = get_guild_setting(guild.id, "ticket_category_id")
+    category = guild.get_channel(int(category_id)) if category_id else discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+    if category is not None and not isinstance(category, discord.CategoryChannel):
+        category = None
     if category is None:
-        category = await guild.create_category(TICKET_CATEGORY_NAME, reason="DF-Manager Ticket-System")
-    support_role = discord.utils.get(guild.roles, name=SUPPORT_ROLE_NAME)
+        try:
+            category = await guild.create_category(TICKET_CATEGORY_NAME, reason="DF-Manager Ticket-System")
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.response.send_message("Ich kann die Ticket-Kategorie nicht verwenden oder erstellen. Prüfe meine Rechte und die Dashboard-Einstellungen.", ephemeral=True)
+            return
+    support_role_id = get_guild_setting(guild.id, "ticket_support_role_id")
+    support_role = guild.get_role(int(support_role_id)) if support_role_id else discord.utils.get(guild.roles, name=SUPPORT_ROLE_NAME)
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, attach_files=True, embed_links=True),
@@ -109,7 +126,15 @@ async def create_ticket(interaction: discord.Interaction) -> None:
         description=f"{get_guild_setting(guild.id, 'ticket_welcome_message') or f'Hallo {interaction.user.mention}! Beschreibe dein Anliegen bitte möglichst genau.'}\n\nDas Support-Team sieht diesen privaten Kanal. Nutze die Schaltfläche unten, wenn dein Anliegen erledigt ist.",
         color=discord.Color.blurple(),
     )
-    await channel.send(content=f"{interaction.user.mention}" + (f" {support_role.mention}" if support_role else ""), embed=embed, view=CloseTicketView())
+    try:
+        await channel.send(content=f"{interaction.user.mention}" + (f" {support_role.mention}" if support_role else ""), embed=embed, view=CloseTicketView())
+    except (discord.Forbidden, discord.HTTPException):
+        try:
+            await channel.delete(reason="Ticket-Erstellung fehlgeschlagen")
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        await interaction.response.send_message("Der Ticketkanal wurde erstellt, aber ich konnte die Begrüßung nicht senden. Prüfe meine Kanalrechte.", ephemeral=True)
+        return
     await interaction.response.send_message(f"Dein privates Ticket wurde erstellt: {channel.mention}", ephemeral=True)
 
 
