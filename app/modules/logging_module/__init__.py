@@ -70,6 +70,9 @@ class LoggingModule(commands.Cog):
             "logging_channel_events",
             "logging_role_events",
             "logging_voice_events",
+            "logging_member_events",
+            "logging_moderation_events",
+            "logging_server_events",
         ):
             set_guild_setting(ctx.guild.id, key, True)
         await ctx.reply(f"Logging-Kanal wurde auf {channel.mention} gesetzt. Die Logging-Ereignisse sind standardmäßig aktiviert.")
@@ -152,6 +155,9 @@ class LoggingModule(commands.Cog):
             "logging_channel_events",
             "logging_role_events",
             "logging_voice_events",
+            "logging_member_events",
+            "logging_moderation_events",
+            "logging_server_events",
         ):
             set_guild_setting(guild.id, key, True)
         await interaction.response.send_message(
