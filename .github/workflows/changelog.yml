@@ -51,6 +51,7 @@ jobs:
           if now.hour == 18 or now < cutoff:
               cutoff -= timedelta(days=1)
 
+          # Manually triggered retroactive send: publish a fresh German summary now.
           # Read commit subjects and changed paths, but never publish raw titles,
           # hashes, file paths, or links to Discord.
           raw = subprocess.check_output(
