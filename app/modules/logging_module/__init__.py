@@ -242,17 +242,19 @@ class LoggingModule(commands.Cog):
         author_id = str(message.author.id) if message is not None else "unbekannt"
         channel = guild.get_channel(payload.channel_id)
         channel_name = getattr(channel, "mention", f"<#{payload.channel_id}>")
-        content = (message.content.strip() if message is not None else "")
+        content = message.content.strip() if message is not None else ""
         if not content:
-            content = "[Inhalt nicht verfügbar – Discord.py hatte die Nachricht nicht im Cache oder Message Content war nicht verfügbar.]"
+            content = "[Inhalt nicht verfügbar – Nachricht war nicht im Cache oder Message Content war nicht verfügbar.]"
+        actor = "Nicht ermittelbar (Nachricht nicht im Cache)"
+        if message is not None:
+            actor = await self.audit_actor(guild, message.author.id, (discord.AuditLogAction.message_delete,))
         embed = self.make_embed(
             "Nachricht gelöscht",
-            f"**Autor:** {author} ({author_id})\\n**Kanal:** {channel_name}\\n**Inhalt:**\\n{content[:2500]}\\n**Nachrichten-ID:** {payload.message_id}",
+            f"**Gelöscht von:** {actor}\n**Nachrichtenautor:** {author} ({author_id})\n**Kanal:** {channel_name}\n**Inhalt:**\n{content[:2200]}\n**Nachrichten-ID:** {payload.message_id}",
             discord.Color.red(),
         )
         log.info("Message deletion event received: guild=%s channel=%s message=%s cached=%s", payload.guild_id, payload.channel_id, payload.message_id, message is not None)
         await self.send_log(guild, embed, "logging_message_delete")
-
     @commands.Cog.listener()
     async def on_bulk_message_delete(self, messages: list[discord.Message]) -> None:
         if not messages or messages[0].guild is None:
