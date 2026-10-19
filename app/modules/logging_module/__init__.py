@@ -97,6 +97,7 @@ class LoggingModule(commands.Cog):
         # Selecting a logging channel enables the core logging events by default.
         # Administrators can turn individual events off later in the dashboard.
         for key in (
+            "logging_message_create",
             "logging_message_delete",
             "logging_message_edit",
             "logging_member_join",
