@@ -183,6 +183,7 @@ class LoggingModule(commands.Cog):
         set_guild_setting(guild.id, "log_channel_id", channel.id)
         # Enable all event types when a server configures logging for the first time.
         for key in (
+            "logging_message_create",
             "logging_message_delete",
             "logging_message_edit",
             "logging_member_join",
