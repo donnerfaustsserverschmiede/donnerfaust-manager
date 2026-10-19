@@ -1,7 +1,6 @@
 """Discord OAuth dashboard for Donnerfaust Manager."""
 import asyncio
 import logging
-import hmac
 import os
 import secrets
 import sqlite3
@@ -23,7 +22,6 @@ CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "").strip()
 BOT_TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 BASE_URL = os.getenv("DASHBOARD_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "").strip()
-GAME_LOGGING_API_KEY = os.getenv("GAME_LOGGING_API_KEY", "").strip()
 if not SESSION_SECRET:
     SESSION_SECRET = secrets.token_urlsafe(48)
 
@@ -125,7 +123,7 @@ def page(title: str, body: str, user: dict[str, Any] | None = None) -> str:
         sidebar_html = """<aside class="dashboard-sidebar"><div class="sidebar-server"><span class="server-dot">DF</span><span>Donnerfaust Manager<small>Dashboard</small></span></div><div class="sidebar-label">ÜBERSICHT</div><a class="side-link" href="/">⌂ <span>Startseite</span></a><a class="side-link" href="/servers">▦ <span>Server auswählen</span></a><div class="sidebar-label">BOT-FUNKTIONEN</div><a class="side-link" href="/features/logging">◷ <span>Logging</span></a><a class="side-link" href="/features/tickets">▤ <span>Ticketsystem</span></a><a class="side-link" href="/features/moderation">♢ <span>Moderation</span></a><div class="sidebar-bottom"><a class="side-link" href="/profile">◉ <span>Mein Konto</span></a><a class="side-link" href="/logout">↪ <span>Abmelden</span></a></div></aside>"""
     header = ""
     if user:
-        header = f'<header><details class="menu" id="main-menu"><summary aria-label="Menü öffnen">☰</summary><div class="menu-panel"><div class="menu-head"><span class="brand">⚡ DONNERFAUST <b>MANAGER</b></span><button type="button" class="menu-close" onclick="document.getElementById(\'main-menu\').open=false" aria-label="Menü schließen">×</button></div><nav><a href="/">Startseite <span>›</span></a><a href="/features/tickets">Ticketsystem <span>›</span></a><a href="/features/moderation">Moderation <span>›</span></a><a href="/features/logging">Logging <span>›</span></a><a href="/features/game-logging">Game-Logging <span>›</span></a><a href="/servers">Meine Server <span>›</span></a></nav><div class="menu-bottom"><a href="/profile">Mein Konto</a><a href="/logout">Abmelden</a></div></div></details><div class="brand">⚡ DONNERFAUST <b>MANAGER</b></div><div class="header-spacer"></div>{user_html}</header>'
+        header = f'<header><details class="menu" id="main-menu"><summary aria-label="Menü öffnen">☰</summary><div class="menu-panel"><div class="menu-head"><span class="brand">⚡ DONNERFAUST <b>MANAGER</b></span><button type="button" class="menu-close" onclick="document.getElementById(\'main-menu\').open=false" aria-label="Menü schließen">×</button></div><nav><a href="/">Startseite <span>›</span></a><a href="/features/tickets">Ticketsystem <span>›</span></a><a href="/features/moderation">Moderation <span>›</span></a><a href="/features/logging">Logging <span>›</span></a><a href="/servers">Meine Server <span>›</span></a></nav><div class="menu-bottom"><a href="/profile">Mein Konto</a><a href="/logout">Abmelden</a></div></div></details><div class="brand">⚡ DONNERFAUST <b>MANAGER</b></div><div class="header-spacer"></div>{user_html}</header>'
     return f"""<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)} · Donnerfaust Manager</title><style>
 :root{{--bg:#f3f5f9;--panel:#ffffff;--gold:#e3b84d;--blue:#5865f2;--text:#202938;--muted:#687589;--line:#e1e6ef;--navy:#101b2d}}
@@ -162,7 +160,6 @@ async def health():
         "status": "ok",
         "dashboard": "online",
         "discord_bot": "online" if bot_instance is not None and bot_instance.is_ready() else "offline",
-        "game_logging_configured": bool(GAME_LOGGING_API_KEY),
     }
 
 
@@ -221,46 +218,6 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
         request.session["guilds"] = authorized_guilds(guild_response.json())
         request.session["csrf"] = secrets.token_urlsafe(32)
     return RedirectResponse("/", status_code=303)
-
-
-@app.post("/api/game-logs/{guild_id}")
-async def receive_game_log(request: Request, guild_id: str):
-    """Authenticated bridge for FiveM and other gameservers to Discord logging."""
-    if not GAME_LOGGING_API_KEY:
-        raise HTTPException(status_code=503, detail="Game-Logging ist noch nicht eingerichtet.")
-    supplied_key = request.headers.get("x-game-logging-key", "")
-    if not supplied_key or not hmac.compare_digest(supplied_key, GAME_LOGGING_API_KEY):
-        raise HTTPException(status_code=401, detail="Ungültiger Game-Logging-Schlüssel.")
-    if not guild_id.isdigit():
-        raise HTTPException(status_code=400, detail="Ungültige Server-ID.")
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="JSON-Body erwartet.")
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=422, detail="Der Body muss ein JSON-Objekt sein.")
-    event = str(payload.get("event", "")).strip()[:100]
-    message = str(payload.get("message", "")).strip()[:3000]
-    game = str(payload.get("game", "Gameserver")).strip()[:80]
-    if not event or not message:
-        raise HTTPException(status_code=422, detail="Die Felder 'event' und 'message' sind erforderlich.")
-    if bot_instance is None or not bot_instance.is_ready():
-        raise HTTPException(status_code=503, detail="Discord-Bot ist derzeit nicht verbunden.")
-    guild = bot_instance.get_guild(int(guild_id))
-    if guild is None:
-        raise HTTPException(status_code=404, detail="Der Discord-Server ist dem Bot nicht bekannt.")
-    channel_id = get_guild_config(int(guild_id)).get("log_channel_id")
-    channel = guild.get_channel(int(channel_id)) if channel_id else None
-    if not isinstance(channel, discord.TextChannel):
-        raise HTTPException(status_code=409, detail="Für diesen Server ist kein gültiger Logging-Kanal eingerichtet.")
-    embed = discord.Embed(title="🎮 " + game + ": " + event, description=message, color=discord.Color.gold())
-    try:
-        await channel.send(embed=embed)
-    except discord.Forbidden:
-        raise HTTPException(status_code=403, detail="Der Bot darf im Logging-Kanal keine Nachrichten senden.")
-    except discord.HTTPException:
-        raise HTTPException(status_code=502, detail="Discord konnte das Protokoll gerade nicht annehmen.")
-    return {"ok": True, "message": "Game-Log wurde gesendet."}
 
 
 @app.get("/profile", response_class=HTMLResponse)
@@ -333,7 +290,7 @@ async def feature_page(request: Request, feature: str):
         "logging": ("Logging", "Serverereignisse protokollieren", "Wähle später pro Server den Protokollkanal und die Ereignisse, die dein Bot erfassen soll."),
         "tickets": ("Ticketsystem", "Support übersichtlich organisieren", "Konfiguriere später Ticket-Kategorien, Support-Rollen, Begrüßungen und dein Ticket-Panel."),
         "moderation": ("Moderation", "Werkzeuge für dein Moderationsteam", "Verwalte später Timeout, Kick, Ban und das Bereinigen von Nachrichten."),
-        "game-logging": ("Game-Logging", "Spiele mit Discord verbinden", "Gameserver können Ereignisse über einen authentifizierten API-Endpunkt an den konfigurierten Discord-Logging-Kanal senden. Der geheime API-Schlüssel muss im Hosting gesetzt werden."),
+        "game-logging": ("Game-Logging", "Spiele mit Discord verbinden", "Konfiguriere die Bot-Funktionen für deinen Discord-Server."),
     }
     selected = pages.get(feature)
     if not selected:
