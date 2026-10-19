@@ -51,7 +51,7 @@ jobs:
 
           # Summarize the period since the previous 18:00 in Europe/Berlin.
           cutoff = datetime.combine(now.date(), time(18, 0), tzinfo=tz)
-          if now.time() <= time(18, 0):
+          if now.hour == 18 or now < cutoff:
               cutoff -= timedelta(days=1)
           since = cutoff.isoformat()
 
