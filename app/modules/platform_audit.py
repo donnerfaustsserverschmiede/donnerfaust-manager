@@ -9,7 +9,7 @@ from discord.ext import commands
 
 MASTER_USER_ID = "528084214357295114"
 CENTRAL_LOG_GUILD_ID = 1512636539174129714
-CENTRAL_LOG_CHANNEL_ID = 1561730344749633636
+CENTRAL_LOG_CHANNEL_ID = 1561736652735643658
 DB_PATH = Path(os.getenv("DASHBOARD_DB_PATH", "data/donnerfaust_manager.sqlite3"))
 
 
@@ -65,14 +65,14 @@ class PlatformAudit(commands.Cog):
     async def on_guild_join(self, guild: discord.Guild):
         actor_id, actor_name = await self._audit_actor(guild, discord.AuditLogAction.bot_add, self.bot.user.id if self.bot.user else 0)
         record_event("bot_added", guild.id, guild.name, actor_id, actor_name, "Bot wurde einem Discord-Server hinzugefügt.")
-        await self._send_central_log("DF-Manager hinzugefügt", f"**Server:** {guild.name}", discord.Color.green())
+        await self._send_central_log("DF-Manager wurde eingeladen", f"Server: {guild.name}", discord.Color.green())
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         # Discord does not reliably expose the remover after the bot has left.
         record_event("bot_removed", guild.id, guild.name, "", "Nicht ermittelbar",
                      "Bot hat den Server verlassen oder wurde entfernt; Discord lieferte keinen zuverlässig prüfbaren Auslöser.")
-        await self._send_central_log("DF-Manager hat Server verlassen", f"**Server:** {guild.name}", discord.Color.red())
+        await self._send_central_log("DF-Manager wurde entfernt", f"Server: {guild.name}", discord.Color.red())
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PlatformAudit(bot))
