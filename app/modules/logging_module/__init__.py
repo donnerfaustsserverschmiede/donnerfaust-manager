@@ -21,12 +21,27 @@ class LoggingModule(commands.Cog):
         if not channel_id:
             return
         channel = guild.get_channel(int(channel_id))
-        if not isinstance(channel, discord.TextChannel):
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(int(channel_id))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                log.warning("Logging channel %s is unavailable for guild %s", channel_id, guild.id)
+                return
+        if not isinstance(channel, discord.TextChannel) or channel.guild.id != guild.id:
+            log.warning("Configured logging channel %s is not a text channel in guild %s", channel_id, guild.id)
+            return
+        me = guild.me
+        if me is None:
+            log.warning("Could not resolve bot member in guild %s", guild.id)
+            return
+        permissions = channel.permissions_for(me)
+        if not permissions.view_channel or not permissions.send_messages or not permissions.embed_links:
+            log.warning("Missing View Channel / Send Messages / Embed Links permission in logging channel %s (guild %s)", channel.id, guild.id)
             return
         try:
             await channel.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
-            log.warning("Could not send a log message in guild %s", guild.id)
+            log.exception("Could not send a log message in channel %s (guild %s)", channel.id, guild.id)
 
     @staticmethod
     def make_embed(title: str, description: str, color: discord.Color) -> discord.Embed:
