@@ -294,6 +294,106 @@ class LoggingModule(commands.Cog):
             await self.send_log(after, embed, "logging_channel_events")
 
     @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
+        changes = []
+        if before.nick != after.nick:
+            changes.append(f"**Nickname:** {before.nick or before.name} → {after.nick or after.name}")
+        if before.roles != after.roles:
+            old_roles = ", ".join(r.name for r in before.roles if r not in after.roles) or "keine"
+            new_roles = ", ".join(r.name for r in after.roles if r not in before.roles) or "keine"
+            changes.append(f"**Rollen entfernt:** {old_roles}\n**Rollen hinzugefügt:** {new_roles}")
+        if before.pending != after.pending:
+            changes.append(f"**Mitgliedschaftsprüfung:** {before.pending} → {after.pending}")
+        if changes:
+            await self.send_log(after.guild, self.make_embed("Mitglied geändert", f"**Mitglied:** {after} ({after.id})\n" + "\n".join(changes), discord.Color.orange()), "logging_member_events")
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User | discord.Member) -> None:
+        await self.send_log(guild, self.make_embed("Mitglied gebannt", f"**Nutzer:** {user} ({user.id})\nEin Bann wurde auf diesem Server festgestellt.", discord.Color.red()), "logging_moderation_events")
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild: discord.Guild, user: discord.User) -> None:
+        await self.send_log(guild, self.make_embed("Bann aufgehoben", f"**Nutzer:** {user} ({user.id})\nDer Bann wurde aufgehoben.", discord.Color.green()), "logging_moderation_events")
+
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent) -> None:
+        if payload.guild_id is None:
+            return
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            return
+        channel = guild.get_channel(payload.channel_id)
+        await self.send_log(guild, self.make_embed(
+            "Mehrere Nachrichten gelöscht",
+            f"**Kanal:** {getattr(channel, 'mention', f'<#{payload.channel_id}>')}\n**Anzahl:** {len(payload.message_ids)}\nDie Löschung wurde von Discord gemeldet.",
+            discord.Color.dark_red(),
+        ), "logging_message_delete")
+
+    @commands.Cog.listener()
+    async def on_thread_create(self, thread: discord.Thread) -> None:
+        await self.send_log(thread.guild, self.make_embed("Thread erstellt", f"**Thread:** {thread.name} ({thread.id})\n**Kanal:** {thread.parent.mention if thread.parent else 'unbekannt'}\n**Privat:** {thread.is_private()}", discord.Color.green()), "logging_channel_events")
+
+    @commands.Cog.listener()
+    async def on_thread_delete(self, thread: discord.Thread) -> None:
+        await self.send_log(thread.guild, self.make_embed("Thread gelöscht", f"**Thread:** {thread.name} ({thread.id})\n**Kanal-ID:** {thread.parent_id}", discord.Color.red()), "logging_channel_events")
+
+    @commands.Cog.listener()
+    async def on_thread_update(self, before: discord.Thread, after: discord.Thread) -> None:
+        changes = []
+        if before.name != after.name:
+            changes.append(f"**Name:** {before.name} → {after.name}")
+        if before.archived != after.archived:
+            changes.append(f"**Archiviert:** {before.archived} → {after.archived}")
+        if before.locked != after.locked:
+            changes.append(f"**Gesperrt:** {before.locked} → {after.locked}")
+        if changes:
+            await self.send_log(after.guild, self.make_embed("Thread geändert", f"**Thread:** {after.name} ({after.id})\n" + "\n".join(changes), discord.Color.orange()), "logging_channel_events")
+
+    @commands.Cog.listener()
+    async def on_invite_create(self, invite: discord.Invite) -> None:
+        if invite.guild is None:
+            return
+        inviter = str(invite.inviter) if invite.inviter else "unbekannt"
+        await self.send_log(invite.guild, self.make_embed("Einladung erstellt", f"**Code:** {invite.code}\n**Ersteller:** {inviter}\n**Kanal:** {invite.channel.mention if invite.channel else 'unbekannt'}", discord.Color.green()), "logging_server_events")
+
+    @commands.Cog.listener()
+    async def on_invite_delete(self, invite: discord.Invite) -> None:
+        if invite.guild is None:
+            return
+        await self.send_log(invite.guild, self.make_embed("Einladung gelöscht", f"**Code:** {invite.code}\n**Kanal:** {invite.channel.mention if invite.channel else 'unbekannt'}", discord.Color.orange()), "logging_server_events")
+
+    @commands.Cog.listener()
+    async def on_guild_emojis_update(self, guild: discord.Guild, before: list[discord.Emoji], after: list[discord.Emoji]) -> None:
+        before_ids = {emoji.id for emoji in before}
+        after_ids = {emoji.id for emoji in after}
+        added = [emoji.name for emoji in after if emoji.id not in before_ids]
+        removed = [emoji.name for emoji in before if emoji.id not in after_ids]
+        renamed = [f"{old.name} → {next((e.name for e in after if e.id == old.id), old.name)}" for old in before if old.id in after_ids and old.name != next((e.name for e in after if e.id == old.id), old.name)]
+        details = []
+        if added: details.append("**Hinzugefügt:** " + ", ".join(added))
+        if removed: details.append("**Entfernt:** " + ", ".join(removed))
+        if renamed: details.append("**Umbenannt:** " + ", ".join(renamed))
+        if details:
+            await self.send_log(guild, self.make_embed("Server-Emojis geändert", "\n".join(details), discord.Color.orange()), "logging_server_events")
+
+    @commands.Cog.listener()
+    async def on_guild_stickers_update(self, guild: discord.Guild, before: list[discord.GuildSticker], after: list[discord.GuildSticker]) -> None:
+        before_ids = {sticker.id for sticker in before}
+        after_ids = {sticker.id for sticker in after}
+        added = [sticker.name for sticker in after if sticker.id not in before_ids]
+        removed = [sticker.name for sticker in before if sticker.id not in after_ids]
+        if added or removed:
+            await self.send_log(guild, self.make_embed("Server-Sticker geändert", f"**Hinzugefügt:** {', '.join(added) or 'keine'}\n**Entfernt:** {', '.join(removed) or 'keine'}", discord.Color.orange()), "logging_server_events")
+
+    @commands.Cog.listener()
+    async def on_webhooks_update(self, channel: discord.abc.GuildChannel) -> None:
+        await self.send_log(channel.guild, self.make_embed("Webhooks geändert", f"**Kanal:** {channel.name} ({channel.id})\nWebhooks wurden erstellt, geändert oder gelöscht. Details sind abhängig von Discords verfügbaren Ereignisdaten.", discord.Color.orange()), "logging_server_events")
+
+    @commands.Cog.listener()
+    async def on_guild_integrations_update(self, guild: discord.Guild) -> None:
+        await self.send_log(guild, self.make_embed("Integrationen geändert", "Discord meldet eine Änderung an den Server-Integrationen.", discord.Color.orange()), "logging_server_events")
+
+    @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
         if before.channel == after.channel:
             return
