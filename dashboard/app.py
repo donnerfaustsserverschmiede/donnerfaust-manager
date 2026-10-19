@@ -1,4 +1,6 @@
 """Discord OAuth dashboard for Donnerfaust Manager."""
+import asyncio
+import logging
 import hmac
 import os
 import secrets
@@ -13,6 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.database import get_guild_config, set_guild_setting, ALLOWED_SETTINGS
+from bot import DonnerfaustBot
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "1559529951303041054").strip()
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "").strip()
@@ -30,6 +33,37 @@ DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
 ADMINISTRATOR = 0x8
 INVITE_PERMISSIONS = 1099780189334
+
+log = logging.getLogger("donnerfaust_manager.dashboard")
+bot_instance = None
+bot_task = None
+
+
+@app.on_event("startup")
+async def start_discord_bot():
+    """Run the Discord bot alongside the dashboard in this single Render service."""
+    global bot_instance, bot_task
+    if not BOT_TOKEN:
+        log.error("DISCORD_TOKEN fehlt: Dashboard startet, Discord-Bot bleibt aus.")
+        return
+    bot_instance = DonnerfaustBot()
+    bot_task = asyncio.create_task(bot_instance.start(BOT_TOKEN), name="donnerfaust-discord-bot")
+    await asyncio.sleep(0)
+    log.info("Discord-Bot wird im Hintergrund gestartet.")
+
+
+@app.on_event("shutdown")
+async def stop_discord_bot():
+    global bot_instance, bot_task
+    if bot_instance and not bot_instance.is_closed():
+        await bot_instance.close()
+    if bot_task:
+        bot_task.cancel()
+        try:
+            await bot_task
+        except asyncio.CancelledError:
+            pass
+
 
 
 def db_connect():
