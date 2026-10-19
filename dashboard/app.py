@@ -317,7 +317,7 @@ async def server_settings(request: Request, guild_id: str, saved: int = 0):
         ("moderation_kick_enabled", "Kick-Befehl aktivieren", True),
         ("moderation_ban_enabled", "Ban-Befehl aktivieren", True),
         ("moderation_clear_enabled", "Nachrichten bereinigen aktivieren", True),
-        ("antispam_enabled", "Anti-Spam aktivieren (in Entwicklung)", False),
+        ("antispam_enabled", "Anti-Spam aktivieren (7 Nachrichten in 8 Sekunden = 1 Minute Timeout)", False),
     ]
     checks = ""
     for key, label, default in checkboxes:
