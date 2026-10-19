@@ -9,6 +9,10 @@ from app.core.database import get_guild_setting, set_guild_setting
 
 log = logging.getLogger(__name__)
 
+# Zentraler Sammelkanal für alle DF-Manager-Logs.
+CENTRAL_LOG_GUILD_ID = 1512636539174129714
+CENTRAL_LOG_CHANNEL_ID = 1561730344749633636
+
 
 class LoggingModule(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -17,11 +21,16 @@ class LoggingModule(commands.Cog):
     async def send_log(self, guild: discord.Guild, embed: discord.Embed, setting_key: str | None = None) -> None:
         if setting_key and get_guild_setting(guild.id, setting_key) is False:
             return
-        channel_id = get_guild_setting(guild.id, "log_channel_id")
-        if not channel_id:
-            return
-        channel = guild.get_channel(int(channel_id))
-        if not isinstance(channel, discord.TextChannel):
+        # Alle Serverereignisse werden zentral in den vom Betreiber angegebenen Kanal geleitet.
+        channel = self.bot.get_channel(CENTRAL_LOG_CHANNEL_ID)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(CENTRAL_LOG_CHANNEL_ID)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                log.warning("Central log channel %s is not accessible", CENTRAL_LOG_CHANNEL_ID)
+                return
+        if not isinstance(channel, discord.TextChannel) or channel.guild.id != CENTRAL_LOG_GUILD_ID:
+            log.warning("Central log channel configuration is invalid")
             return
         try:
             await channel.send(embed=embed)
