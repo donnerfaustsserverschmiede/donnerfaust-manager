@@ -12,7 +12,10 @@ jobs:
   publish-changelog:
     runs-on: ubuntu-latest
     steps:
-      - name: Publish commit summary to Discord
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Publish detailed changelog to Discord
         env:
           DISCORD_CHANGELOG_WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message || 'Manueller Changelog-Test' }}
@@ -23,23 +26,58 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
+          import subprocess
           import sys
           import urllib.request
 
           webhook = os.environ.get("DISCORD_CHANGELOG_WEBHOOK", "").strip()
           if not webhook:
-              print("DISCORD_CHANGELOG_WEBHOOK secret is not configured; cannot publish changelog.")
+              print("DISCORD_CHANGELOG_WEBHOOK secret is not configured.")
               sys.exit(1)
 
-          message = os.environ.get("COMMIT_MESSAGE", "").strip().splitlines()[0][:180]
-          author = os.environ.get("COMMIT_AUTHOR", "Donnerfaust Manager")[:80]
+          commit_message = os.environ.get("COMMIT_MESSAGE", "Änderungen am Donnerfaust Manager").strip()
+          author = os.environ.get("COMMIT_AUTHOR", "Donnerfaust Manager").strip()[:80]
           url = os.environ.get("COMMIT_URL", "")
           sha = os.environ.get("COMMIT_SHA", "")[:7]
-          content = f"**Donnerfaust Manager – Changelog**\n{message}\nÄnderung: {sha} · von {author}\n{url}"
-          payload = json.dumps({"content": content[:1900], "allowed_mentions": {"parse": []}}).encode()
-          req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+
+          try:
+              changelog = subprocess.check_output(
+                  ["git", "show", "HEAD:CHANGELOG.md"], text=True, stderr=subprocess.DEVNULL
+              )
+          except (subprocess.CalledProcessError, FileNotFoundError):
+              changelog = ""
+
+          # Post the first dated section from CHANGELOG.md, if present.
+          match = re.search(r"(?m)^## .+", changelog)
+          if match:
+              start = match.start()
+              next_section = re.search(r"(?m)^## .+", changelog[match.end():])
+              end = match.end() + next_section.start() if next_section else len(changelog)
+              body = changelog[start:end].strip()
+          else:
+              body = (
+                  f"## Änderung: {commit_message.splitlines()[0][:180]}\n"
+                  "Für diese Änderung wurde noch kein ausführlicher Eintrag in CHANGELOG.md ergänzt."
+              )
+
+          content = (
+              f"**Donnerfaust Manager – Changelog**\n"
+              f"{body}\n\n"
+              f"**Commit:** {sha} · **von:** {author}\n{url}"
+          )
+          # Discord message content is limited to 2000 characters.
+          payload = json.dumps({
+              "content": content[:1950],
+              "allowed_mentions": {"parse": []}
+          }).encode()
+          req = urllib.request.Request(
+              webhook, data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
           with urllib.request.urlopen(req, timeout=15) as response:
               if response.status not in (200, 204):
                   raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
-          print("Changelog successfully published to Discord.")
+          print("Detailed changelog successfully published.")
           PY
