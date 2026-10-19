@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+import discord
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -22,6 +23,7 @@ CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "").strip()
 BOT_TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 BASE_URL = os.getenv("DASHBOARD_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "").strip()
+GAME_LOGGING_API_KEY = os.getenv("GAME_LOGGING_API_KEY", "").strip()
 if not SESSION_SECRET:
     SESSION_SECRET = secrets.token_urlsafe(48)
 
@@ -202,6 +204,46 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
     return RedirectResponse("/", status_code=303)
 
 
+@app.post("/api/game-logs/{guild_id}")
+async def receive_game_log(request: Request, guild_id: str):
+    """Authenticated bridge for FiveM and other gameservers to Discord logging."""
+    if not GAME_LOGGING_API_KEY:
+        raise HTTPException(status_code=503, detail="Game-Logging ist noch nicht eingerichtet.")
+    supplied_key = request.headers.get("x-game-logging-key", "")
+    if not supplied_key or not hmac.compare_digest(supplied_key, GAME_LOGGING_API_KEY):
+        raise HTTPException(status_code=401, detail="Ungültiger Game-Logging-Schlüssel.")
+    if not guild_id.isdigit():
+        raise HTTPException(status_code=400, detail="Ungültige Server-ID.")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON-Body erwartet.")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Der Body muss ein JSON-Objekt sein.")
+    event = str(payload.get("event", "")).strip()[:100]
+    message = str(payload.get("message", "")).strip()[:3000]
+    game = str(payload.get("game", "Gameserver")).strip()[:80]
+    if not event or not message:
+        raise HTTPException(status_code=422, detail="Die Felder 'event' und 'message' sind erforderlich.")
+    if bot_instance is None or not bot_instance.is_ready():
+        raise HTTPException(status_code=503, detail="Discord-Bot ist derzeit nicht verbunden.")
+    guild = bot_instance.get_guild(int(guild_id))
+    if guild is None:
+        raise HTTPException(status_code=404, detail="Der Discord-Server ist dem Bot nicht bekannt.")
+    channel_id = get_guild_config(int(guild_id)).get("log_channel_id")
+    channel = guild.get_channel(int(channel_id)) if channel_id else None
+    if not isinstance(channel, discord.TextChannel):
+        raise HTTPException(status_code=409, detail="Für diesen Server ist kein gültiger Logging-Kanal eingerichtet.")
+    embed = discord.Embed(title="🎮 " + game + ": " + event, description=message, color=discord.Color.gold())
+    try:
+        await channel.send(embed=embed)
+    except discord.Forbidden:
+        raise HTTPException(status_code=403, detail="Der Bot darf im Logging-Kanal keine Nachrichten senden.")
+    except discord.HTTPException:
+        raise HTTPException(status_code=502, detail="Discord konnte das Protokoll gerade nicht annehmen.")
+    return {"ok": True, "message": "Game-Log wurde gesendet."}
+
+
 @app.get("/profile", response_class=HTMLResponse)
 async def profile(request: Request):
     user = current_user(request)
@@ -272,7 +314,7 @@ async def feature_page(request: Request, feature: str):
         "logging": ("Logging", "Serverereignisse protokollieren", "Wähle später pro Server den Protokollkanal und die Ereignisse, die dein Bot erfassen soll."),
         "tickets": ("Ticketsystem", "Support übersichtlich organisieren", "Konfiguriere später Ticket-Kategorien, Support-Rollen, Begrüßungen und dein Ticket-Panel."),
         "moderation": ("Moderation", "Werkzeuge für dein Moderationsteam", "Verwalte später Timeout, Kick, Ban und das Bereinigen von Nachrichten."),
-        "game-logging": ("Game-Logging", "Spiele mit Discord verbinden", "Verbinde unterstützte Gameserver später über sichere Schnittstellen, um Spielereignisse in Discord zu protokollieren."),
+        "game-logging": ("Game-Logging", "Spiele mit Discord verbinden", "Gameserver können Ereignisse über einen authentifizierten API-Endpunkt an den konfigurierten Discord-Logging-Kanal senden. Der geheime API-Schlüssel muss im Hosting gesetzt werden."),
     }
     selected = pages.get(feature)
     if not selected:
