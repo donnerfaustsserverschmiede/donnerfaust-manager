@@ -99,12 +99,55 @@ class LoggingModule(commands.Cog):
         await self.send_log(channel.guild, self.make_embed("Kanal gelöscht", f"Kanal: {channel.name} ({channel.id})", discord.Color.red()), "logging_channel_events")
 
     @commands.Cog.listener()
+    async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel) -> None:
+        changes = []
+        if before.name != after.name:
+            changes.append(f"**Name:** {before.name} → {after.name}")
+        if getattr(before, "category_id", None) != getattr(after, "category_id", None):
+            old_category = before.category.name if getattr(before, "category", None) else "Keine Kategorie"
+            new_category = after.category.name if getattr(after, "category", None) else "Keine Kategorie"
+            changes.append(f"**Kategorie:** {old_category} → {new_category}")
+        if changes:
+            embed = self.make_embed("Kanal geändert", f"**Kanal:** {after.name} ({after.id})\\n" + "\\n".join(changes), discord.Color.orange())
+            await self.send_log(after.guild, embed, "logging_channel_events")
+
+    @commands.Cog.listener()
     async def on_guild_role_create(self, role: discord.Role) -> None:
         await self.send_log(role.guild, self.make_embed("Rolle erstellt", f"Rolle: {role.name} ({role.id})", discord.Color.green()), "logging_role_events")
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role: discord.Role) -> None:
         await self.send_log(role.guild, self.make_embed("Rolle gelöscht", f"Rolle: {role.name} ({role.id})", discord.Color.red()), "logging_role_events")
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> None:
+        changes = []
+        if before.name != after.name:
+            changes.append(f"**Name:** {before.name} → {after.name}")
+        if before.permissions != after.permissions:
+            changes.append("**Berechtigungen:** geändert")
+        if before.color != after.color:
+            changes.append("**Rollenfarbe:** geändert")
+        if before.hoist != after.hoist:
+            changes.append("**Separat anzeigen:** geändert")
+        if before.mentionable != after.mentionable:
+            changes.append("**Erwähnbar:** geändert")
+        if changes:
+            embed = self.make_embed("Rolle geändert", f"**Rolle:** {after.name} ({after.id})\\n" + "\\n".join(changes), discord.Color.orange())
+            await self.send_log(after.guild, embed, "logging_role_events")
+
+    @commands.Cog.listener()
+    async def on_guild_update(self, before: discord.Guild, after: discord.Guild) -> None:
+        changes = []
+        if before.name != after.name:
+            changes.append(f"**Servername:** {before.name} → {after.name}")
+        if before.description != after.description:
+            changes.append("**Serverbeschreibung:** geändert")
+        if before.icon != after.icon:
+            changes.append("**Serverbild:** geändert")
+        if changes:
+            embed = self.make_embed("Server geändert", "\\n".join(changes), discord.Color.orange())
+            await self.send_log(after, embed, "logging_channel_events")
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
