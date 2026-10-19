@@ -28,6 +28,8 @@ ALLOWED_SETTINGS = {
     "moderation_ban_enabled",
     "moderation_clear_enabled",
     "antispam_enabled",
+    "autorole_enabled",
+    "autorole_role_id",
 }
 
 
