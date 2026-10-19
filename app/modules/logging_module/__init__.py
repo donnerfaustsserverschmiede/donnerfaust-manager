@@ -277,14 +277,6 @@ class LoggingModule(commands.Cog):
         log.info("Message deletion event received: guild=%s channel=%s message=%s cached=%s", payload.guild_id, payload.channel_id, payload.message_id, message is not None)
         await self.send_log(guild, embed, "logging_message_delete")
     @commands.Cog.listener()
-    async def on_bulk_message_delete(self, messages: list[discord.Message]) -> None:
-        if not messages or messages[0].guild is None:
-            return
-        guild = messages[0].guild
-        embed = self.make_embed("Mehrere Nachrichten gelöscht", f"Discord hat {len(messages)} Nachrichten in einem Kanal auf einmal gelöscht. Der Inhalt wird hier nicht einzeln protokolliert.", discord.Color.dark_red())
-        await self.send_log(guild, embed, "logging_message_delete")
-
-    @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         if before.guild is None or before.author.bot or before.content == after.content:
             return
