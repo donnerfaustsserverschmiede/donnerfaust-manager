@@ -4,6 +4,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from app.core.database import get_guild_setting
+
 SUPPORT_ROLE_NAME = "Support"
 TICKET_CATEGORY_NAME = "Tickets"
 
@@ -104,7 +106,7 @@ async def create_ticket(interaction: discord.Interaction) -> None:
         return
     embed = discord.Embed(
         title="🎫 Support-Ticket",
-        description=f"Hallo {interaction.user.mention}! Beschreibe dein Anliegen bitte möglichst genau.\n\nDas Support-Team sieht diesen privaten Kanal. Nutze die Schaltfläche unten, wenn dein Anliegen erledigt ist.",
+        description=f"{get_guild_setting(guild.id, 'ticket_welcome_message') or f'Hallo {interaction.user.mention}! Beschreibe dein Anliegen bitte möglichst genau.'}\n\nDas Support-Team sieht diesen privaten Kanal. Nutze die Schaltfläche unten, wenn dein Anliegen erledigt ist.",
         color=discord.Color.blurple(),
     )
     await channel.send(content=f"{interaction.user.mention}" + (f" {support_role.mention}" if support_role else ""), embed=embed, view=CloseTicketView())
