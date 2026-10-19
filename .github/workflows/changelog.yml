@@ -51,104 +51,94 @@ jobs:
           if now.hour == 18 or now < cutoff:
               cutoff -= timedelta(days=1)
 
+          # Read commit subjects and changed paths, but never publish raw titles,
+          # hashes, file paths, or links to Discord.
           raw = subprocess.check_output(
-              ["git", "log", f"--since={cutoff.isoformat()}", "--pretty=format:%s"],
+              ["git", "log", f"--since={cutoff.isoformat()}",
+               "--format=COMMIT:%s", "--name-only"],
               text=True,
           ).strip()
 
-          def describe(subject):
-              s = subject.strip()
-              low = s.lower()
-              known = {
-                  "[send-changelog-now] trigger one-time retrospective changelog post":
-                      "Den nachträglichen Versand der Tageszusammenfassung ausgelöst.",
-                  "correct newline and tab handling in daily changelog":
-                      "Die Formatierung der Zusammenfassung verbessert, damit Aufzählungen und Zeilenumbrüche korrekt erscheinen.",
-                  "fix daily changelog digest time window and formatting":
-                      "Den erfassten Zeitraum und die Darstellung der täglichen Zusammenfassung korrigiert.",
-                  "fix daily changelog reporting window":
-                      "Den Zeitraum angepasst, aus dem die täglichen Änderungen gesammelt werden.",
-                  "schedule daily consolidated changelog at 18:00 europe/berlin":
-                      "Die tägliche Sammelübersicht für 18:00 Uhr deutscher Zeit eingerichtet.",
-                  "remove commit metadata from public discord changelog":
-                      "Technische Zusatzinformationen aus der öffentlichen Discord-Nachricht entfernt.",
-                  "document changelog delivery fix and test status":
-                      "Den Stand der Fehlerbehebung und die Versandprüfung dokumentiert.",
-                  "use compliant discord api user-agent for webhook posts":
-                      "Die Anfrage an Discord angepasst, um den Nachrichtenversand zuverlässiger zu machen.",
-                  "show safe discord webhook error details in changelog workflow":
-                      "Die Fehlerdiagnose für fehlgeschlagene Discord-Nachrichten verbessert.",
-                  "add initial project status changelog":
-                      "Eine erste Übersicht zum Projektstand ergänzt.",
-                  "publish detailed changelog entries to discord":
-                      "Die Veröffentlichung der Änderungsübersicht in Discord eingerichtet.",
-              }
-              if low in known:
-                  return known[low]
-              # Translate common commit-message patterns into a plain German summary.
-              prefixes = [
-                  ("fix ", "Einen Fehler behoben: "),
-                  ("fix:", "Einen Fehler behoben: "),
-                  ("fix(", "Einen Fehler in einem Teilbereich behoben: "),
-                  ("add ", "Eine Funktion ergänzt: "),
-                  ("add:", "Eine Funktion ergänzt: "),
-                  ("feat:", "Eine neue Funktion ergänzt: "),
-                  ("feat(", "Eine neue Funktion ergänzt: "),
-                  ("update ", "Eine bestehende Funktion aktualisiert: "),
-                  ("update:", "Eine bestehende Funktion aktualisiert: "),
-                  ("improve ", "Eine Funktion verbessert: "),
-                  ("improve:", "Eine Funktion verbessert: "),
-                  ("remove ", "Nicht mehr benötigte Bestandteile entfernt: "),
-                  ("refactor ", "Den internen Aufbau überarbeitet: "),
-                  ("test ", "Die Tests erweitert oder angepasst: "),
-                  ("docs:", "Die Projektdokumentation aktualisiert: "),
-                  ("chore:", "Technische Wartungsarbeiten durchgeführt: "),
-              ]
-              for prefix, german in prefixes:
-                  if low.startswith(prefix):
-                      rest = s[len(prefix):].strip(" ():-")
-                      return german + rest[:1].lower() + rest[1:] + "."
-              # Keep unknown titles readable, but do not expose hashes or links.
-              return "Bearbeitung am Projekt: " + s[:1].lower() + s[1:].rstrip(".") + "."
+          commits = []
+          subject = ""
+          paths = []
+          for line in raw.splitlines():
+              if line.startswith("COMMIT:"):
+                  if subject:
+                      commits.append((subject, paths))
+                  subject = line[len("COMMIT:"):].strip()
+                  paths = []
+              elif line.strip():
+                  paths.append(line.strip())
+          if subject:
+              commits.append((subject, paths))
 
-          entries = []
-          seen = set()
-          for subject in raw.splitlines():
-              item = describe(subject)
-              if item not in seen:
-                  seen.add(item)
-                  entries.append("• " + item)
+          categories = set()
+          for subject, paths in commits:
+              all_text = " ".join([subject] + paths).lower()
+              if ".github/workflows/changelog.yml" in all_text or "changelog" in all_text or "discord webhook" in all_text:
+                  categories.add("changelog")
+              if any(token in all_text for token in ("ticket", "support", "case")):
+                  categories.add("tickets")
+              if any(token in all_text for token in ("moderation", "ban", "timeout", "warn", "kick")):
+                  categories.add("moderation")
+              if any(token in all_text for token in ("logging", "audit", "log_event")):
+                  categories.add("logging")
+              if any(token in all_text for token in ("oauth", "login", "auth", "session", "permission")):
+                  categories.add("login")
+              if any(token in all_text for token in ("dashboard", "web/", "templates/", "static/")):
+                  categories.add("website")
+              if any(token in all_text for token in ("database", "migration", "schema", ".sql")):
+                  categories.add("database")
+              if any(token in all_text for token in ("test", "pytest", "spec")):
+                  categories.add("tests")
+              if any(token in all_text for token in ("requirements", "pyproject", "dockerfile", "render.yaml", "runtime.txt", "deploy")):
+                  categories.add("betrieb")
+              if any(token in all_text for token in ("bot.py", "main.py", "commands", "cogs/", "discord")):
+                  categories.add("bot")
+              if any(token in all_text for token in ("readme", "docs/", "documentation")):
+                  categories.add("docs")
 
-          if not entries:
-              body = "Seit der letzten Zusammenfassung wurden keine neuen Änderungen gespeichert."
-              heading = f"Tagesübersicht vom {now:%d.%m.%Y}"
-          else:
-              body = "\n".join(entries)
-              heading = f"Änderungen seit {cutoff:%d.%m., %H:%M} Uhr"
+          summaries = {
+              "changelog": "Die tägliche Änderungsübersicht verbessert: Sie wird gesammelt auf Deutsch und ohne technische Verweise veröffentlicht.",
+              "tickets": "Am Ticketsystem gearbeitet, damit Support-Anfragen besser verwaltet werden können.",
+              "moderation": "Die Moderationsfunktionen des Bots bearbeitet.",
+              "logging": "Die Protokollierung von Serverereignissen bearbeitet.",
+              "login": "Anmeldung und Berechtigungsprüfung überarbeitet.",
+              "website": "Die Verwaltungswebsite und ihre Bedienoberfläche bearbeitet.",
+              "database": "Die Datenspeicherung und Datenbankstruktur angepasst.",
+              "tests": "Prüfungen ergänzt oder angepasst, um Fehler früher zu erkennen.",
+              "betrieb": "Die Einrichtung oder Bereitstellung des Bots überarbeitet.",
+              "bot": "Funktionen und Abläufe des Discord-Bots bearbeitet.",
+              "docs": "Die Projektdokumentation aktualisiert.",
+          }
 
+          order = ["tickets", "moderation", "logging", "login", "website",
+                   "database", "bot", "tests", "betrieb", "docs", "changelog"]
+          entries = [summaries[key] for key in order if key in categories]
+
+          # If changes were made but no known component matched, do not expose
+          # raw commit messages. Report only a neutral, honest summary.
+          if not entries and commits:
+              entries = ["Am Projekt wurden Änderungen vorgenommen; die betroffenen Bereiche konnten nicht zuverlässig zugeordnet werden."]
+          elif not entries:
+              entries = ["Seit der letzten Zusammenfassung wurden keine neuen Änderungen gespeichert."]
+
+          heading = f"Änderungen seit {cutoff:%d.%m., %H:%M} Uhr"
           content = (
               "## Donnerfaust Manager – täglicher Changelog\n"
-              f"**{heading}**\n\n{body}\n\n"
-              "_Automatische Zusammenfassung der Arbeiten am Donnerfaust Manager._"
+              f"**{heading}**\n\n"
+              + "\n".join("• " + entry for entry in entries)
+              + "\n\n_Automatische Tageszusammenfassung der Arbeiten am Donnerfaust Manager._"
           )
 
           if len(content) > 1900:
-              entries = entries[:1] + entries[1:]
-              body = "\n".join(entries)
-              while len(content) > 1900 and entries:
-                  entries.pop()
-                  body = "\n".join(entries)
-                  content = (
-                      "## Donnerfaust Manager – täglicher Changelog\n"
-                      f"**{heading}**\n\n{body}\n\n"
-                      "_Weitere Änderungen wurden aus Platzgründen zusammengefasst._"
-                  )
-              if not entries:
-                  content = "## Donnerfaust Manager – täglicher Changelog\n**Die Tagesübersicht enthält viele Änderungen.**\n\nWeitere Arbeiten wurden durchgeführt und werden in der nächsten Zusammenfassung berücksichtigt."
+              content = content[:1850].rsplit("\n", 1)[0] + "\nWeitere Arbeiten wurden in dieser Übersicht zusammengefasst."
 
           payload = json.dumps({"content": content, "allowed_mentions": {"parse": []}}).encode("utf-8")
           req = urllib.request.Request(
-              webhook, data=payload,
+              webhook,
+              data=payload,
               headers={
                   "Content-Type": "application/json",
                   "User-Agent": "DiscordBot (https://github.com/donnerfaustsserverschmiede/donnerfaust-manager, 1.0)"
