@@ -11,6 +11,7 @@ from typing import Any
 DB_PATH = Path(os.getenv("DASHBOARD_DB_PATH", "data/donnerfaust_manager.sqlite3"))
 ALLOWED_SETTINGS = {
     "log_channel_id",
+    "logging_message_create",
     "logging_message_delete",
     "logging_message_edit",
     "logging_member_join",
