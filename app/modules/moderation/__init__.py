@@ -3,6 +3,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from app.core.database import get_guild_setting
+
 
 class ModerationModule(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -11,6 +13,9 @@ class ModerationModule(commands.Cog):
     @app_commands.command(name="timeout", description="Schaltet ein Mitglied für eine bestimmte Zeit stumm.")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def timeout(self, interaction: discord.Interaction, member: discord.Member, minuten: app_commands.Range[int, 1, 40320], grund: str = "Kein Grund angegeben") -> None:
+        if interaction.guild and get_guild_setting(interaction.guild.id, "moderation_timeout_enabled") is False:
+            await interaction.response.send_message("Diese Moderationsfunktion ist im Dashboard deaktiviert.", ephemeral=True)
+            return
         if interaction.guild and member.top_role >= interaction.guild.me.top_role:
             await interaction.response.send_message("Ich kann dieses Mitglied wegen der Rollen-Hierarchie nicht timeouten.", ephemeral=True)
             return
@@ -31,6 +36,9 @@ class ModerationModule(commands.Cog):
     @app_commands.command(name="kick", description="Entfernt ein Mitglied vom Server.")
     @app_commands.checks.has_permissions(kick_members=True)
     async def kick(self, interaction: discord.Interaction, member: discord.Member, grund: str = "Kein Grund angegeben") -> None:
+        if interaction.guild and get_guild_setting(interaction.guild.id, "moderation_kick_enabled") is False:
+            await interaction.response.send_message("Diese Moderationsfunktion ist im Dashboard deaktiviert.", ephemeral=True)
+            return
         if interaction.guild and member.top_role >= interaction.guild.me.top_role:
             await interaction.response.send_message("Ich kann dieses Mitglied wegen der Rollen-Hierarchie nicht kicken.", ephemeral=True)
             return
@@ -44,6 +52,9 @@ class ModerationModule(commands.Cog):
     @app_commands.command(name="ban", description="Bannt ein Mitglied vom Server.")
     @app_commands.checks.has_permissions(ban_members=True)
     async def ban(self, interaction: discord.Interaction, member: discord.Member, grund: str = "Kein Grund angegeben") -> None:
+        if interaction.guild and get_guild_setting(interaction.guild.id, "moderation_ban_enabled") is False:
+            await interaction.response.send_message("Diese Moderationsfunktion ist im Dashboard deaktiviert.", ephemeral=True)
+            return
         if interaction.guild and member.top_role >= interaction.guild.me.top_role:
             await interaction.response.send_message("Ich kann dieses Mitglied wegen der Rollen-Hierarchie nicht bannen.", ephemeral=True)
             return
@@ -57,6 +68,9 @@ class ModerationModule(commands.Cog):
     @app_commands.command(name="clear", description="Löscht bis zu 100 Nachrichten im aktuellen Kanal.")
     @app_commands.checks.has_permissions(manage_messages=True)
     async def clear(self, interaction: discord.Interaction, anzahl: app_commands.Range[int, 1, 100]) -> None:
+        if interaction.guild and get_guild_setting(interaction.guild.id, "moderation_clear_enabled") is False:
+            await interaction.response.send_message("Diese Moderationsfunktion ist im Dashboard deaktiviert.", ephemeral=True)
+            return
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message("Dieser Befehl funktioniert nur in Textkanälen.", ephemeral=True)
