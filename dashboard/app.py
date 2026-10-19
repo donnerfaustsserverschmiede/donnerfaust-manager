@@ -439,17 +439,23 @@ async def logging_settings(request: Request, guild_id: str, saved: int = 0):
         selected = " selected" if str(config.get("log_channel_id", "")) == str(channel["id"]) else ""
         options += f'<option value="{esc(channel["id"])}"{selected}>#{esc(channel["name"])}</option>'
     groups = [
-        ("Nachrichten", "Nachrichten protokollieren, die gelöscht oder bearbeitet werden.", [
+        ("Nachrichten", "Nachrichten werden automatisch protokolliert. Der Log-Kanal selbst wird übersprungen, damit keine Endlosschleife entsteht.", [
+            ("logging_message_create", "Gesendete Nachrichten"),
             ("logging_message_delete", "Gelöschte Nachrichten"),
             ("logging_message_edit", "Bearbeitete Nachrichten"),
         ]),
-        ("Mitglieder", "Beitritte und Austritte im Blick behalten.", [
+        ("Mitglieder", "Beitritte, Austritte, Rollenänderungen und Mitgliedsänderungen.", [
             ("logging_member_join", "Mitgliederbeitritte"),
             ("logging_member_leave", "Mitgliederaustritte"),
+            ("logging_member_events", "Mitglieder- und Rollenänderungen"),
         ]),
         ("Kanäle und Rollen", "Strukturelle Änderungen am Server erfassen.", [
-            ("logging_channel_events", "Kanal erstellt oder gelöscht"),
-            ("logging_role_events", "Rolle erstellt oder gelöscht"),
+            ("logging_channel_events", "Kanäle, Kategorien und Threads"),
+            ("logging_role_events", "Rollen erstellt, geändert oder gelöscht"),
+        ]),
+        ("Moderation und Server", "Banns, Entbanns und weitere Serveraktivitäten.", [
+            ("logging_moderation_events", "Moderationsereignisse"),
+            ("logging_server_events", "Einladungen, Emojis, Sticker, Webhooks und Integrationen"),
         ]),
         ("Sprachkanäle", "Beitritte, Austritte und Wechsel zwischen Sprachkanälen.", [
             ("logging_voice_events", "Sprachkanal-Aktivitäten"),
@@ -498,7 +504,7 @@ async def save_logging_settings(request: Request, guild_id: str, csrf: str = For
         raise HTTPException(status_code=422, detail="Der ausgewählte Kanal gehört nicht zu diesem Server oder ist kein Textkanal.")
     set_guild_setting(int(guild_id), "log_channel_id", int(log_channel_id))
     form = await request.form()
-    keys = ("logging_message_delete", "logging_message_edit", "logging_member_join", "logging_member_leave", "logging_channel_events", "logging_role_events", "logging_voice_events")
+    keys = ("logging_message_create", "logging_message_delete", "logging_message_edit", "logging_member_join", "logging_member_leave", "logging_member_events", "logging_channel_events", "logging_role_events", "logging_voice_events", "logging_moderation_events", "logging_server_events")
     for key in keys:
         set_guild_setting(int(guild_id), key, form.get(key) == "true")
     return RedirectResponse(f"/servers/{guild_id}/logging?saved=1", status_code=303)
