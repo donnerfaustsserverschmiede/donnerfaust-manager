@@ -74,6 +74,34 @@ class LoggingModule(commands.Cog):
         else:
             await ctx.reply(f"Logging ist für diesen Server auf {channel.mention} eingestellt.")
 
+    @commands.command(name="logtest")
+    @commands.guild_only()
+    @commands.has_guild_permissions(manage_guild=True)
+    async def log_test(self, ctx: commands.Context) -> None:
+        """Send a visible test entry to the configured logging channel."""
+        if ctx.guild is None:
+            return
+        channel_id = get_guild_setting(ctx.guild.id, "log_channel_id")
+        channel = ctx.guild.get_channel(int(channel_id)) if channel_id else None
+        if not isinstance(channel, discord.TextChannel):
+            await ctx.reply("Kein gültiger Log-Kanal eingerichtet. Wähle ihn im Dashboard oder nutze !setlogchannel #kanal.")
+            return
+        me = ctx.guild.me
+        if me is None:
+            await ctx.reply("Ich kann meine Servermitgliedschaft gerade nicht prüfen. Bitte versuche es erneut.")
+            return
+        permissions = channel.permissions_for(me)
+        if not permissions.view_channel or not permissions.send_messages or not permissions.embed_links:
+            await ctx.reply(f"Mir fehlen im {channel.mention} die Rechte „Kanal ansehen“, „Nachrichten senden“ oder „Links einbetten“.")
+            return
+        try:
+            await channel.send(embed=self.make_embed("Logging-Test erfolgreich", f"Der Test wurde von {ctx.author} ausgelöst. Wenn du diesen Eintrag siehst, kann ich in diesem Kanal protokollieren.", discord.Color.green()))
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Logging test failed in channel %s (guild %s)", channel.id, ctx.guild.id)
+            await ctx.reply("Discord hat den Testeintrag abgelehnt. Prüfe die Bot-Rechte im Log-Kanal.")
+            return
+        await ctx.reply(f"Testeintrag wurde in {channel.mention} gesendet.")
+
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message) -> None:
         if message.guild is None or message.author.bot:
