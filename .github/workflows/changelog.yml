@@ -1,10 +1,8 @@
-name: Discord daily changelog digest
+name: Deutscher täglicher Changelog
 
 on:
   push:
     branches: [main]
-  # GitHub cron uses UTC. Run at both candidate hours and let Python
-  # publish only when it is 18:00 in Europe/Berlin (handles DST).
   schedule:
     - cron: "0 16 * * *"
     - cron: "0 17 * * *"
@@ -18,12 +16,12 @@ jobs:
     if: github.event_name != 'push' || contains(github.event.head_commit.message, '[send-changelog-now]')
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Repository abrufen
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Publish one daily changelog digest to Discord
+      - name: Deutsche Tageszusammenfassung an Discord senden
         env:
           DISCORD_CHANGELOG_WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
         run: |
@@ -40,79 +38,134 @@ jobs:
           tz = ZoneInfo("Europe/Berlin")
           now = datetime.now(tz)
 
-          # Scheduled runs are triggered at both UTC hours to accommodate
-          # daylight-saving time. Only the run at local 18:00 may post.
-          # Manual dispatches are allowed to post immediately for testing.
           if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and now.hour != 18:
-              print(f"Skipping duplicate DST candidate; local time is {now:%H:%M %Z}.")
+              print(f"Übersprungen: lokale Uhrzeit ist {now:%H:%M %Z}.")
               sys.exit(0)
 
           webhook = os.environ.get("DISCORD_CHANGELOG_WEBHOOK", "").strip()
           if not webhook:
-              print("DISCORD_CHANGELOG_WEBHOOK secret is not configured.")
+              print("Das Discord-Webhook-Secret ist nicht eingerichtet.")
               sys.exit(1)
 
-          # Summarize the period since the previous 18:00 in Europe/Berlin.
           cutoff = datetime.combine(now.date(), time(18, 0), tzinfo=tz)
           if now.hour == 18 or now < cutoff:
               cutoff -= timedelta(days=1)
-          since = cutoff.isoformat()
 
           raw = subprocess.check_output(
-              ["git", "log", f"--since={since}", "--date=short",
-               "--pretty=format:%h%x09%s"],
+              ["git", "log", f"--since={cutoff.isoformat()}", "--pretty=format:%s"],
               text=True,
           ).strip()
 
-          entries = []
-          for line in raw.splitlines():
-              parts = line.split("\t", 1)
-              if len(parts) == 2:
-                  sha, subject = parts
-                  entries.append(f"• **{subject}** ([{sha}](https://github.com/donnerfaustsserverschmiede/donnerfaust-manager/commit/{sha}))")
+          def describe(subject):
+              s = subject.strip()
+              low = s.lower()
+              known = {
+                  "[send-changelog-now] trigger one-time retrospective changelog post":
+                      "Den nachträglichen Versand der Tageszusammenfassung ausgelöst.",
+                  "correct newline and tab handling in daily changelog":
+                      "Die Formatierung der Zusammenfassung verbessert, damit Aufzählungen und Zeilenumbrüche korrekt erscheinen.",
+                  "fix daily changelog digest time window and formatting":
+                      "Den erfassten Zeitraum und die Darstellung der täglichen Zusammenfassung korrigiert.",
+                  "fix daily changelog reporting window":
+                      "Den Zeitraum angepasst, aus dem die täglichen Änderungen gesammelt werden.",
+                  "schedule daily consolidated changelog at 18:00 europe/berlin":
+                      "Die tägliche Sammelübersicht für 18:00 Uhr deutscher Zeit eingerichtet.",
+                  "remove commit metadata from public discord changelog":
+                      "Technische Zusatzinformationen aus der öffentlichen Discord-Nachricht entfernt.",
+                  "document changelog delivery fix and test status":
+                      "Den Stand der Fehlerbehebung und die Versandprüfung dokumentiert.",
+                  "use compliant discord api user-agent for webhook posts":
+                      "Die Anfrage an Discord angepasst, um den Nachrichtenversand zuverlässiger zu machen.",
+                  "show safe discord webhook error details in changelog workflow":
+                      "Die Fehlerdiagnose für fehlgeschlagene Discord-Nachrichten verbessert.",
+                  "add initial project status changelog":
+                      "Eine erste Übersicht zum Projektstand ergänzt.",
+                  "publish detailed changelog entries to discord":
+                      "Die Veröffentlichung der Änderungsübersicht in Discord eingerichtet.",
+              }
+              if low in known:
+                  return known[low]
+              # Translate common commit-message patterns into a plain German summary.
+              prefixes = [
+                  ("fix ", "Einen Fehler behoben: "),
+                  ("fix:", "Einen Fehler behoben: "),
+                  ("fix(", "Einen Fehler in einem Teilbereich behoben: "),
+                  ("add ", "Eine Funktion ergänzt: "),
+                  ("add:", "Eine Funktion ergänzt: "),
+                  ("feat:", "Eine neue Funktion ergänzt: "),
+                  ("feat(", "Eine neue Funktion ergänzt: "),
+                  ("update ", "Eine bestehende Funktion aktualisiert: "),
+                  ("update:", "Eine bestehende Funktion aktualisiert: "),
+                  ("improve ", "Eine Funktion verbessert: "),
+                  ("improve:", "Eine Funktion verbessert: "),
+                  ("remove ", "Nicht mehr benötigte Bestandteile entfernt: "),
+                  ("refactor ", "Den internen Aufbau überarbeitet: "),
+                  ("test ", "Die Tests erweitert oder angepasst: "),
+                  ("docs:", "Die Projektdokumentation aktualisiert: "),
+                  ("chore:", "Technische Wartungsarbeiten durchgeführt: "),
+              ]
+              for prefix, german in prefixes:
+                  if low.startswith(prefix):
+                      rest = s[len(prefix):].strip(" ():-")
+                      return german + rest[:1].lower() + rest[1:] + "."
+              # Keep unknown titles readable, but do not expose hashes or links.
+              return "Bearbeitung am Projekt: " + s[:1].lower() + s[1:].rstrip(".") + "."
 
-          if entries:
-              body = "\n".join(entries)
-              heading = f"**Änderungen seit {cutoff:%d.%m., %H:%M} Uhr**"
+          entries = []
+          seen = set()
+          for subject in raw.splitlines():
+              item = describe(subject)
+              if item not in seen:
+                  seen.add(item)
+                  entries.append("• " + item)
+
+          if not entries:
+              body = "Seit der letzten Zusammenfassung wurden keine neuen Änderungen gespeichert."
+              heading = f"Tagesübersicht vom {now:%d.%m.%Y}"
           else:
-              body = "Seit der letzten Zusammenfassung wurden keine neuen Commits auf `main` gefunden."
-              heading = f"**Tageszusammenfassung – {now:%d.%m.%Y}**"
+              body = "\n".join(entries)
+              heading = f"Änderungen seit {cutoff:%d.%m., %H:%M} Uhr"
 
           content = (
-              "## Donnerfaust Manager – tägliches Changelog\n"
-              f"{heading}\n\n{body}\n\n"
-              "_Automatisch erstellt; aufgeführt sind die Änderungen aus GitHub-Commits._"
+              "## Donnerfaust Manager – täglicher Changelog\n"
+              f"**{heading}**\n\n{body}\n\n"
+              "_Automatische Zusammenfassung der Arbeiten am Donnerfaust Manager._"
           )
 
-          # Discord message content limit is 2000 characters.
-          if len(content) > 1950:
-              content = content[:1880].rsplit("\n", 1)[0] + "\n… (gekürzt; siehe Commit-Links oben)."
+          if len(content) > 1900:
+              entries = entries[:1] + entries[1:]
+              body = "\n".join(entries)
+              while len(content) > 1900 and entries:
+                  entries.pop()
+                  body = "\n".join(entries)
+                  content = (
+                      "## Donnerfaust Manager – täglicher Changelog\n"
+                      f"**{heading}**\n\n{body}\n\n"
+                      "_Weitere Änderungen wurden aus Platzgründen zusammengefasst._"
+                  )
+              if not entries:
+                  content = "## Donnerfaust Manager – täglicher Changelog\n**Die Tagesübersicht enthält viele Änderungen.**\n\nWeitere Arbeiten wurden durchgeführt und werden in der nächsten Zusammenfassung berücksichtigt."
 
-          payload = json.dumps({
-              "content": content,
-              "allowed_mentions": {"parse": []}
-          }).encode("utf-8")
+          payload = json.dumps({"content": content, "allowed_mentions": {"parse": []}}).encode("utf-8")
           req = urllib.request.Request(
-              webhook,
-              data=payload,
+              webhook, data=payload,
               headers={
                   "Content-Type": "application/json",
                   "User-Agent": "DiscordBot (https://github.com/donnerfaustsserverschmiede/donnerfaust-manager, 1.0)"
               },
               method="POST"
           )
-
           try:
               with urllib.request.urlopen(req, timeout=15) as response:
                   if response.status not in (200, 204):
-                      raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
+                      raise RuntimeError(f"Discord meldete HTTP {response.status}")
           except urllib.error.HTTPError as exc:
               detail = exc.read().decode("utf-8", errors="replace")[:1000]
-              print(f"Discord webhook failed with HTTP {exc.code}: {detail}")
+              print(f"Discord-Versand fehlgeschlagen (HTTP {exc.code}): {detail}")
               raise SystemExit(1)
           except urllib.error.URLError as exc:
-              print(f"Could not reach Discord webhook endpoint: {exc.reason}")
+              print(f"Discord konnte nicht erreicht werden: {exc.reason}")
               raise SystemExit(1)
 
-          print(f"Daily changelog digest successfully published for period since {since}.")
+          print(f"Deutsche Tageszusammenfassung erfolgreich gesendet. Zeitraum ab {cutoff.isoformat()}.")
           PY
