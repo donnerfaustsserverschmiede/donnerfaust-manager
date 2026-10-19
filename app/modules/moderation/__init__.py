@@ -1,4 +1,7 @@
 """Moderation commands for the Donnerfaust Manager."""
+from collections import defaultdict, deque
+from datetime import timedelta
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -9,6 +12,41 @@ from app.core.database import get_guild_setting
 class ModerationModule(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.message_times: dict[tuple[int, int], deque] = defaultdict(deque)
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        """Conservative opt-in anti-spam: 7 messages in 8 seconds triggers a 60-second timeout."""
+        if message.guild is None or message.author.bot or not isinstance(message.author, discord.Member):
+            return
+        if get_guild_setting(message.guild.id, "antispam_enabled") is not True:
+            return
+        member = message.author
+        if member.guild_permissions.administrator or member.guild_permissions.manage_messages:
+            return
+        now = discord.utils.utcnow()
+        key = (message.guild.id, member.id)
+        bucket = self.message_times[key]
+        while bucket and (now - bucket[0]).total_seconds() > 8:
+            bucket.popleft()
+        bucket.append(now)
+        if len(bucket) < 7:
+            return
+        bucket.clear()
+        me = message.guild.me
+        if me is None or not me.guild_permissions.moderate_members or member.top_role >= me.top_role:
+            return
+        try:
+            await member.timeout(now + timedelta(minutes=1), reason="DF Manager Anti-Spam: 7 Nachrichten innerhalb von 8 Sekunden")
+        except (discord.Forbidden, discord.HTTPException):
+            return
+        try:
+            await message.channel.send(
+                f"{member.mention} wurde wegen auffälligem Nachrichten-Spam für 1 Minute eingeschränkt.",
+                delete_after=10,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
     @app_commands.command(name="timeout", description="Schaltet ein Mitglied für eine bestimmte Zeit stumm.")
     @app_commands.checks.has_permissions(moderate_members=True)
