@@ -63,27 +63,27 @@ jobs:
 
           entries = []
           for line in raw.splitlines():
-              parts = line.split("\\t", 1)
+              parts = line.split("\t", 1)
               if len(parts) == 2:
                   sha, subject = parts
                   entries.append(f"• **{subject}** ([{sha}](https://github.com/donnerfaustsserverschmiede/donnerfaust-manager/commit/{sha}))")
 
           if entries:
-              body = "\\n".join(entries)
+              body = "\n".join(entries)
               heading = f"**Änderungen seit {cutoff:%d.%m., %H:%M} Uhr**"
           else:
               body = "Seit der letzten Zusammenfassung wurden keine neuen Commits auf `main` gefunden."
               heading = f"**Tageszusammenfassung – {now:%d.%m.%Y}**"
 
           content = (
-              "## Donnerfaust Manager – tägliches Changelog\\n"
-              f"{heading}\\n\\n{body}\\n\\n"
+              "## Donnerfaust Manager – tägliches Changelog\n"
+              f"{heading}\n\n{body}\n\n"
               "_Automatisch erstellt; aufgeführt sind die Änderungen aus GitHub-Commits._"
           )
 
           # Discord message content limit is 2000 characters.
           if len(content) > 1950:
-              content = content[:1880].rsplit("\\n", 1)[0] + "\\n… (gekürzt; siehe Commit-Links oben)."
+              content = content[:1880].rsplit("\n", 1)[0] + "\n… (gekürzt; siehe Commit-Links oben)."
 
           payload = json.dumps({
               "content": content,
