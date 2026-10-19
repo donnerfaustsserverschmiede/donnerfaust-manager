@@ -30,6 +30,7 @@ jobs:
           import subprocess
           import sys
           import urllib.request
+          import urllib.error
 
           webhook = os.environ.get("DISCORD_CHANGELOG_WEBHOOK", "").strip()
           if not webhook:
@@ -76,8 +77,20 @@ jobs:
               headers={"Content-Type": "application/json"},
               method="POST"
           )
-          with urllib.request.urlopen(req, timeout=15) as response:
-              if response.status not in (200, 204):
-                  raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
+          try:
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  if response.status not in (200, 204):
+                      raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
+          except urllib.error.HTTPError as exc:
+              # Discord's JSON error explains permission/access failures. Never print the webhook URL.
+              try:
+                  detail = exc.read().decode("utf-8", errors="replace")[:1000]
+              except Exception:
+                  detail = "(Discord did not return an error body)"
+              print(f"Discord webhook failed with HTTP {exc.code}: {detail}")
+              raise SystemExit(1)
+          except urllib.error.URLError as exc:
+              print(f"Could not reach Discord webhook endpoint: {exc.reason}")
+              raise SystemExit(1)
           print("Detailed changelog successfully published.")
           PY
