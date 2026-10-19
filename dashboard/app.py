@@ -1,5 +1,6 @@
 """Discord OAuth dashboard for Donnerfaust Manager."""
 import asyncio
+import hmac
 import logging
 import os
 import secrets
@@ -290,7 +291,6 @@ async def feature_page(request: Request, feature: str):
         "logging": ("Logging", "Serverereignisse protokollieren", "Wähle später pro Server den Protokollkanal und die Ereignisse, die dein Bot erfassen soll."),
         "tickets": ("Ticketsystem", "Support übersichtlich organisieren", "Konfiguriere später Ticket-Kategorien, Support-Rollen, Begrüßungen und dein Ticket-Panel."),
         "moderation": ("Moderation", "Werkzeuge für dein Moderationsteam", "Verwalte später Timeout, Kick, Ban und das Bereinigen von Nachrichten."),
-        "game-logging": ("Game-Logging", "Spiele mit Discord verbinden", "Konfiguriere die Bot-Funktionen für deinen Discord-Server."),
     }
     selected = pages.get(feature)
     if not selected:
