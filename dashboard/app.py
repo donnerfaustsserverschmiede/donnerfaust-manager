@@ -180,7 +180,9 @@ async def profile(request: Request):
         avatar_url = f'https://cdn.discordapp.com/avatars/{esc(user["id"])}/{esc(avatar_hash)}.{extension}?size=256'
     else:
         avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png"
-    body = f'<section class="card"><div class="tag">Mein Konto</div><img src="{avatar_url}" alt="Discord-Profilbild" style="width:96px;height:96px;border-radius:50%;border:3px solid var(--gold);object-fit:cover"><h1>{esc(display)}</h1><p>Dein Name und Profilbild werden von Discord übernommen. Änderungen daran nimmst du direkt in Discord vor.</p><a class="button secondary" href="https://discord.com/users/{esc(user["id"])}" target="_blank" rel="noopener">Discord-Profil öffnen</a><div class="notice">Du kannst dein Webseitenkonto hier löschen. Dein Discord-Konto bleibt dabei bestehen.</div><form method="post" action="/profile/delete" onsubmit="return confirm('Webseitenkonto wirklich löschen?')"><input type="hidden" name="csrf" value="{esc(request.session.get("csrf", ""))}"><button type="submit">Webseitenkonto löschen</button></form></section>'
+    discord_user_id = user["id"]
+    csrf_token = request.session.get("csrf", "")
+    body = f'<section class="card"><div class="tag">Mein Konto</div><img src="{avatar_url}" alt="Discord-Profilbild" style="width:96px;height:96px;border-radius:50%;border:3px solid var(--gold);object-fit:cover"><h1>{esc(display)}</h1><p>Dein Name und Profilbild werden von Discord übernommen. Änderungen daran nimmst du direkt in Discord vor.</p><a class="button secondary" href="https://discord.com/users/{esc(discord_user_id)}" target="_blank" rel="noopener">Discord-Profil öffnen</a><div class="notice">Du kannst dein Webseitenkonto hier löschen. Dein Discord-Konto bleibt dabei bestehen.</div><form method="post" action="/profile/delete" onsubmit="return confirm('Webseitenkonto wirklich löschen?')"><input type="hidden" name="csrf" value="{esc(csrf_token)}"><button type="submit">Webseitenkonto löschen</button></form></section>'
     return page("Mein Konto", body, user)
 
 
