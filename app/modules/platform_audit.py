@@ -8,6 +8,8 @@ import discord
 from discord.ext import commands
 
 MASTER_USER_ID = "528084214357295114"
+CENTRAL_LOG_GUILD_ID = 1512636539174129714
+CENTRAL_LOG_CHANNEL_ID = 1561730344749633636
 DB_PATH = Path(os.getenv("DASHBOARD_DB_PATH", "data/donnerfaust_manager.sqlite3"))
 
 
@@ -45,15 +47,33 @@ class PlatformAudit(commands.Cog):
         return "", "Nicht ermittelbar"
 
     @commands.Cog.listener()
+    async def _send_central_log(self, title: str, description: str, color: discord.Color) -> None:
+        channel = self.bot.get_channel(CENTRAL_LOG_CHANNEL_ID)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(CENTRAL_LOG_CHANNEL_ID)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return
+        if isinstance(channel, discord.TextChannel) and channel.guild.id == CENTRAL_LOG_GUILD_ID:
+            embed = discord.Embed(title=title, description=description[:3500], color=color,
+                                  timestamp=datetime.now(timezone.utc))
+            try:
+                await channel.send(embed=embed)
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+    @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
         actor_id, actor_name = await self._audit_actor(guild, discord.AuditLogAction.bot_add, self.bot.user.id if self.bot.user else 0)
         record_event("bot_added", guild.id, guild.name, actor_id, actor_name, "Bot wurde einem Discord-Server hinzugefügt.")
+        await self._send_central_log("DF-Manager hinzugefügt", f"**Server:** {guild.name} ({guild.id})\\n**Eingeladen von:** {actor_name}"+(f" ({actor_id})" if actor_id else ""), discord.Color.green())
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         # Discord does not reliably expose the remover after the bot has left.
         record_event("bot_removed", guild.id, guild.name, "", "Nicht ermittelbar",
                      "Bot hat den Server verlassen oder wurde entfernt; Discord lieferte keinen zuverlässig prüfbaren Auslöser.")
+        await self._send_central_log("DF-Manager hat Server verlassen", f"**Server:** {guild.name} ({guild.id})\\n**Auslöser:** Nicht zuverlässig ermittelbar", discord.Color.red())
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PlatformAudit(bot))
