@@ -71,8 +71,7 @@ class LoggingModule(commands.Cog):
             "logging_role_events",
             "logging_voice_events",
         ):
-            if get_guild_setting(ctx.guild.id, key) is None:
-                set_guild_setting(ctx.guild.id, key, True)
+            set_guild_setting(ctx.guild.id, key, True)
         await ctx.reply(f"Logging-Kanal wurde auf {channel.mention} gesetzt. Die Logging-Ereignisse sind standardmäßig aktiviert.")
 
     @commands.command(name="logstatus")
@@ -154,8 +153,7 @@ class LoggingModule(commands.Cog):
             "logging_role_events",
             "logging_voice_events",
         ):
-            if get_guild_setting(guild.id, key) is None:
-                set_guild_setting(guild.id, key, True)
+            set_guild_setting(guild.id, key, True)
         await interaction.response.send_message(
             f"Logging-Kanal wurde auf {channel.mention} gesetzt. Die Logging-Ereignisse sind standardmäßig aktiviert.",
             ephemeral=True,
