@@ -393,17 +393,115 @@ async def feature_page(request: Request, feature: str):
     user = current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if feature == "logging":
+        guilds = request.session.get("guilds", [])
+        body = '<div class="tag">Bot-Funktion</div><h1>Logging</h1><p>Wähle einen Server, um den einzigen Log-Kanal und die gewünschten Ereignisse einzustellen.</p><div class="grid">'
+        for guild in guilds:
+            name = esc(guild.get("name", "Discord-Server"))
+            body += f'<section class="card"><h2>{name}</h2><p>Ein Log-Kanal für alle aktivierten Ereignisse.</p><a class="button secondary" href="/servers/{esc(guild["id"])}/logging">Logging konfigurieren</a></section>'
+        body += '</div>'
+        if not guilds:
+            body += '<section class="card"><p>Keine verwaltbaren Server gefunden. Melde dich erneut über Discord an oder prüfe deine Serverrechte.</p><a class="button secondary" href="/servers">Meine Server</a></section>'
+        return page("Logging", body, user)
     pages = {
-        "logging": ("Logging", "Serverereignisse protokollieren", "Wähle später pro Server den Protokollkanal und die Ereignisse, die dein Bot erfassen soll."),
-        "tickets": ("Ticketsystem", "Support übersichtlich organisieren", "Konfiguriere später Ticket-Kategorien, Support-Rollen, Begrüßungen und dein Ticket-Panel."),
-        "moderation": ("Moderation", "Werkzeuge für dein Moderationsteam", "Verwalte später Timeout, Kick, Ban und das Bereinigen von Nachrichten."),
+        "tickets": ("Ticketsystem", "Support übersichtlich organisieren", "Konfiguriere später Ticket-Kategorien, Support-Rolle, Begrüßung und Ticket-Panel."),
+        "moderation": ("Moderation", "Werkzeuge für dein Moderationsteam", "Verwalte Timeout, Kick, Ban und das Bereinigen von Nachrichten."),
     }
     selected = pages.get(feature)
     if not selected:
         raise HTTPException(status_code=404, detail="Diese Funktionsseite gibt es nicht.")
     title, subtitle, description = selected
-    body = f'<div class="tag">Bot-Funktion</div><h1>{esc(title)}</h1><section class="card"><h2>{esc(subtitle)}</h2><p>{esc(description)}</p><div class="notice">Diese Funktionsseite ist angelegt. Die einzelnen Einstellmöglichkeiten werden schrittweise angebunden.</div><a class="button secondary" href="/servers">Zur Serververwaltung</a></section>'
+    body = f'<div class="tag">Bot-Funktion</div><h1>{esc(title)}</h1><section class="card"><h2>{esc(subtitle)}</h2><p>{esc(description)}</p><div class="notice">Diese Funktionsseite wird schrittweise angebunden.</div><a class="button secondary" href="/servers">Zur Serververwaltung</a></section>'
     return page(title, body, user)
+
+
+@app.get("/servers/{guild_id}/logging", response_class=HTMLResponse)
+async def logging_settings(request: Request, guild_id: str, saved: int = 0):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    guild = next((g for g in request.session.get("guilds", []) if g.get("id") == guild_id), None)
+    if not guild:
+        raise HTTPException(status_code=403, detail="Du darfst diesen Server nicht verwalten. Bitte melde dich neu an.")
+    config = get_guild_config(int(guild_id))
+    channels = []
+    if BOT_TOKEN:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(f"{DISCORD_API}/guilds/{guild_id}/channels", headers={"Authorization": f"Bot {BOT_TOKEN}"})
+                if response.status_code == 200:
+                    channels = response.json()
+        except Exception:
+            log.exception("Discord-Kanäle für Logging konnten nicht geladen werden.")
+    text_channels = [c for c in channels if c.get("type") == 0]
+    options = '<option value="">— Log-Kanal auswählen —</option>'
+    for channel in text_channels:
+        selected = " selected" if str(config.get("log_channel_id", "")) == str(channel["id"]) else ""
+        options += f'<option value="{esc(channel["id"])}"{selected}>#{esc(channel["name"])}</option>'
+    groups = [
+        ("Nachrichten", "Nachrichten protokollieren, die gelöscht oder bearbeitet werden.", [
+            ("logging_message_delete", "Gelöschte Nachrichten"),
+            ("logging_message_edit", "Bearbeitete Nachrichten"),
+        ]),
+        ("Mitglieder", "Beitritte und Austritte im Blick behalten.", [
+            ("logging_member_join", "Mitgliederbeitritte"),
+            ("logging_member_leave", "Mitgliederaustritte"),
+        ]),
+        ("Kanäle und Rollen", "Strukturelle Änderungen am Server erfassen.", [
+            ("logging_channel_events", "Kanal erstellt oder gelöscht"),
+            ("logging_role_events", "Rolle erstellt oder gelöscht"),
+        ]),
+        ("Sprachkanäle", "Beitritte, Austritte und Wechsel zwischen Sprachkanälen.", [
+            ("logging_voice_events", "Sprachkanal-Aktivitäten"),
+        ]),
+    ]
+    body = f'<div class="row"><div><div class="tag">Serververwaltung · Logging</div><h1>{esc(guild.get("name", "Discord-Server"))}</h1><p>Alle aktivierten Ereignisse werden in genau einem Log-Kanal gesammelt.</p></div><a href="/features/logging" class="button secondary">← Server wechseln</a></div>'
+    if saved:
+        body += '<div class="notice">Logging-Einstellungen wurden gespeichert.</div>'
+    if not BOT_TOKEN or not text_channels:
+        body += '<div class="notice error">Die Kanalliste konnte nicht von Discord geladen werden. Prüfe, ob der Bot auf diesem Server ist und der DISCORD_TOKEN im Hosting gesetzt ist.</div>'
+    body += f'<form method="post" action="/servers/{esc(guild_id)}/logging/save"><input type="hidden" name="csrf" value="{esc(request.session.get("csrf", ""))}"><section class="card"><div class="tag">Schritt 1</div><h2>Ein Log-Kanal</h2><p>Wähle einen Textkanal. Es werden keine separaten Kanäle für einzelne Ereignistypen angelegt.</p><label for="log_channel_id">Log-Kanal</label><select id="log_channel_id" name="log_channel_id" required>{options}</select></section>'
+    for index, (heading, description, entries) in enumerate(groups, start=2):
+        body += f'<div class="spacer"></div><section class="card"><div class="tag">Schritt {index}</div><h2>{heading}</h2><p>{description}</p>'
+        for key, label in entries:
+            default = key != "logging_voice_events"
+            value = config.get(key, default)
+            checked = " checked" if value is True or value == "true" else ""
+            body += f'<label class="check"><input type="checkbox" name="{key}" value="true"{checked}><span>{label}</span></label>'
+        body += '</section>'
+    body += '<div class="row"><button type="submit">Logging speichern</button><a class="button secondary" href="/servers">Zur Serververwaltung</a></div></form>'
+    return page("Logging konfigurieren", body, user)
+
+
+@app.post("/servers/{guild_id}/logging/save")
+async def save_logging_settings(request: Request, guild_id: str, csrf: str = Form(""), log_channel_id: str = Form("")):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    guild = next((g for g in request.session.get("guilds", []) if g.get("id") == guild_id), None)
+    if not guild:
+        raise HTTPException(status_code=403, detail="Keine Berechtigung für diesen Server.")
+    expected = request.session.get("csrf", "")
+    if not expected or not hmac.compare_digest(expected, csrf):
+        raise HTTPException(status_code=403, detail="Sicherheitsprüfung fehlgeschlagen. Seite neu laden.")
+    if not log_channel_id.isdigit():
+        raise HTTPException(status_code=422, detail="Bitte wähle einen gültigen Log-Kanal aus.")
+    # Verify that the selected channel actually belongs to this guild and is a text channel.
+    if not BOT_TOKEN:
+        raise HTTPException(status_code=503, detail="Der Bot ist nicht konfiguriert; Einstellungen wurden nicht gespeichert.")
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.get(f"{DISCORD_API}/guilds/{guild_id}/channels", headers={"Authorization": f"Bot {BOT_TOKEN}"})
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Discord-Kanäle konnten nicht geprüft werden. Bitte später erneut versuchen.")
+    valid_channels = {str(channel["id"]) for channel in response.json() if channel.get("type") == 0}
+    if log_channel_id not in valid_channels:
+        raise HTTPException(status_code=422, detail="Der ausgewählte Kanal gehört nicht zu diesem Server oder ist kein Textkanal.")
+    set_guild_setting(int(guild_id), "log_channel_id", int(log_channel_id))
+    form = await request.form()
+    keys = ("logging_message_delete", "logging_message_edit", "logging_member_join", "logging_member_leave", "logging_channel_events", "logging_role_events", "logging_voice_events")
+    for key in keys:
+        set_guild_setting(int(guild_id), key, form.get(key) == "true")
+    return RedirectResponse(f"/servers/{guild_id}/logging?saved=1", status_code=303)
 
 
 @app.get("/servers/{guild_id}", response_class=HTMLResponse)
