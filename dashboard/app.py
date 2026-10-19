@@ -156,6 +156,16 @@ def authorized_guilds(guilds: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+@app.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "dashboard": "online",
+        "discord_bot": "online" if bot_instance is not None and bot_instance.is_ready() else "offline",
+        "game_logging_configured": bool(GAME_LOGGING_API_KEY),
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     user = current_user(request)
