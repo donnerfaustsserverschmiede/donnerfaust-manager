@@ -618,7 +618,7 @@ async def save_settings(request: Request, guild_id: str, csrf: str = Form(""), l
     else:
         set_guild_setting(int(guild_id), "autorole_role_id", "")
     set_guild_setting(int(guild_id), "ticket_welcome_message", ticket_welcome_message[:1500])
-    checkbox_keys = [key for key in ALLOWED_SETTINGS if key.startswith("logging_") or key.startswith("moderation_") or key == "antispam_enabled"]
+    # Only save switches that are actually present on this form. Saving general settings must not silently disable logging events configured on the dedicated Logging page.\n    checkbox_keys = [key for key, _label, _default in checkboxes if key.startswith("logging_") or key.startswith("moderation_") or key == "antispam_enabled"]
     for key in checkbox_keys:
         set_guild_setting(int(guild_id), key, form.get(key) == "true")
     return RedirectResponse(f"/servers/{guild_id}?saved=1", status_code=303)
