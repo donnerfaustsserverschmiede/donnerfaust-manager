@@ -14,7 +14,9 @@ class LoggingModule(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    async def send_log(self, guild: discord.Guild, embed: discord.Embed) -> None:
+    async def send_log(self, guild: discord.Guild, embed: discord.Embed, setting_key: str | None = None) -> None:
+        if setting_key and get_guild_setting(guild.id, setting_key) is False:
+            return
         channel_id = get_guild_setting(guild.id, "log_channel_id")
         if not channel_id:
             return
@@ -63,7 +65,7 @@ class LoggingModule(commands.Cog):
             return
         content = message.content.strip() or "[Kein Text verfügbar – möglicherweise fehlen Message Content Intents oder es war nur ein Anhang.]"
         embed = self.make_embed("Nachricht gelöscht", f"**Autor:** {message.author} ({message.author.id})\n**Kanal:** {message.channel}\n**Inhalt:**\n{content[:2500]}", discord.Color.red())
-        await self.send_log(message.guild, embed)
+        await self.send_log(message.guild, embed, "logging_message_delete")
 
     @commands.Cog.listener()
     async def on_bulk_message_delete(self, messages: list[discord.Message]) -> None:
@@ -71,38 +73,38 @@ class LoggingModule(commands.Cog):
             return
         guild = messages[0].guild
         embed = self.make_embed("Mehrere Nachrichten gelöscht", f"Discord hat {len(messages)} Nachrichten in einem Kanal auf einmal gelöscht. Der Inhalt wird hier nicht einzeln protokolliert.", discord.Color.dark_red())
-        await self.send_log(guild, embed)
+        await self.send_log(guild, embed, "logging_message_delete")
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         if before.guild is None or before.author.bot or before.content == after.content:
             return
         embed = self.make_embed("Nachricht bearbeitet", f"**Autor:** {before.author} ({before.author.id})\n**Kanal:** {before.channel}\n**Vorher:**\n{before.content[:1200] or '[leer]'}\n\n**Nachher:**\n{after.content[:1200] or '[leer]'}", discord.Color.orange())
-        await self.send_log(before.guild, embed)
+        await self.send_log(before.guild, embed, "logging_message_edit")
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
-        await self.send_log(member.guild, self.make_embed("Mitglied beigetreten", f"{member} ({member.id}) ist dem Server beigetreten.", discord.Color.green()))
+        await self.send_log(member.guild, self.make_embed("Mitglied beigetreten", f"{member} ({member.id}) ist dem Server beigetreten.", discord.Color.green()), "logging_member_join")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
-        await self.send_log(member.guild, self.make_embed("Mitglied verlassen", f"{member} ({member.id}) hat den Server verlassen oder wurde entfernt. Discord liefert für dieses Ereignis nicht zuverlässig den Grund.", discord.Color.dark_grey()))
+        await self.send_log(member.guild, self.make_embed("Mitglied verlassen", f"{member} ({member.id}) hat den Server verlassen oder wurde entfernt. Discord liefert für dieses Ereignis nicht zuverlässig den Grund.", discord.Color.dark_grey()), "logging_member_leave")
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
-        await self.send_log(channel.guild, self.make_embed("Kanal erstellt", f"Kanal: {channel.name} ({channel.id})", discord.Color.green()))
+        await self.send_log(channel.guild, self.make_embed("Kanal erstellt", f"Kanal: {channel.name} ({channel.id})", discord.Color.green()), "logging_channel_events")
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
-        await self.send_log(channel.guild, self.make_embed("Kanal gelöscht", f"Kanal: {channel.name} ({channel.id})", discord.Color.red()))
+        await self.send_log(channel.guild, self.make_embed("Kanal gelöscht", f"Kanal: {channel.name} ({channel.id})", discord.Color.red()), "logging_channel_events")
 
     @commands.Cog.listener()
     async def on_guild_role_create(self, role: discord.Role) -> None:
-        await self.send_log(role.guild, self.make_embed("Rolle erstellt", f"Rolle: {role.name} ({role.id})", discord.Color.green()))
+        await self.send_log(role.guild, self.make_embed("Rolle erstellt", f"Rolle: {role.name} ({role.id})", discord.Color.green()), "logging_role_events")
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role: discord.Role) -> None:
-        await self.send_log(role.guild, self.make_embed("Rolle gelöscht", f"Rolle: {role.name} ({role.id})", discord.Color.red()))
+        await self.send_log(role.guild, self.make_embed("Rolle gelöscht", f"Rolle: {role.name} ({role.id})", discord.Color.red()), "logging_role_events")
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
@@ -114,7 +116,7 @@ class LoggingModule(commands.Cog):
             action = f"hat den Sprachkanal {before.channel.name} verlassen"
         else:
             action = f"wechselte von {before.channel.name} zu {after.channel.name}"
-        await self.send_log(member.guild, self.make_embed("Sprachkanal-Aktivität", f"{member} {action}.", discord.Color.blurple()))
+        await self.send_log(member.guild, self.make_embed("Sprachkanal-Aktivität", f"{member} {action}.", discord.Color.blurple()), "logging_voice_events")
 
 
 async def setup(bot: commands.Bot) -> None:
