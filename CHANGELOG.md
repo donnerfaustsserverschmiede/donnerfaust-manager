@@ -1,6 +1,32 @@
 # Donnerfaust Manager – Changelog
 
-## 2026-10-19 — Erstes Gesamt-Update: Projektstand und Changelog-Automatik
+## 2026-10-19 — Changelog-Zustellung korrigiert und Protokollkanäle festgelegt
+
+### Behoben
+- Die automatische Veröffentlichung des Changelogs in Discord wurde erfolgreich zugestellt.
+- Der GitHub-Actions-Workflow sendet jetzt einen expliziten Discord-konformen `User-Agent`, um die zuvor aufgetretene HTTP-403-/Cloudflare-1010-Blockierung zu vermeiden.
+- Die veröffentlichte Nachricht enthält den neuesten Abschnitt aus dieser Datei sowie einen Link zum GitHub-Commit.
+
+### Protokollierung
+- Einladungen des DF-Managers auf den zentralen Discord-Server werden für den festgelegten Protokollkanal verarbeitet.
+- Verlässt der Bot einen Server oder wird er daraus entfernt, wird dafür ebenfalls ein Protokolleintrag ausgelöst.
+- Der Kanal für Einladungen/Entfernungen ist von dem separaten Changelog-Kanal getrennt.
+- Eine Entfernungsbenachrichtigung unterscheidet nicht zuverlässig zwischen einem Kick und einem freiwilligen Verlassen des Servers.
+
+### Geprüft
+- **Bestätigt:** Die Changelog-Nachricht ist im Discord-Kanal angekommen (manuelle Sichtprüfung am 19.10.2026).
+- **Codeänderung gespeichert:** Der Workflow setzt den zusätzlichen `User-Agent`.
+- **Noch offen:** Die Live-Zustellung der Einladungs-/Entfernungsprotokolle wurde mit echten Serverereignissen noch nicht separat bestätigt.
+- Ein grüner Workflow allein ersetzt keinen vollständigen Ende-zu-Ende-Test aller Bot-Module.
+
+### Nächste Prüfschritte
+- Einladungs-/Entfernungsprotokoll mit einem kontrollierten Test verifizieren.
+- Dashboard-Anmeldung sowie Ticketsystem, Moderation und Logging jeweils praktisch testen.
+- Bei jeder Änderung einen konkreten Eintrag mit Änderung, betroffenen Funktionen und tatsächlichem Teststatus ergänzen.
+
+---
+
+## 2026-10-19 — Projektübersicht und technische Grundlage
 
 Der Donnerfaust Manager wird als modularer Discord-Bot mit zentralem Web-Dashboard entwickelt. Ziel ist es, wichtige Verwaltungsfunktionen an einem Ort zusammenzuführen und die Bedienung über eine Webseite zu vereinfachen.
 
@@ -20,22 +46,11 @@ Der Donnerfaust Manager wird als modularer Discord-Bot mit zentralem Web-Dashboa
 ### Ticketsystem, Moderation und Logging
 - Ticketsystem, Moderation und Logging sind als eigenständige Funktionsbereiche vorgesehen.
 - Das Ticketsystem soll über das Dashboard konfigurierbar sein.
-- Der Bot soll Einladungen auf einen Discord-Server und das Entfernen von einem Server im festgelegten zentralen Protokollkanal melden.
-- Eine Entfernungsmeldung dokumentiert, dass der Bot den Server verlassen hat beziehungsweise entfernt wurde; sie kann nicht in jedem Fall beweisen, ob ein Administrator ihn gekickt hat.
+- Die Funktionen müssen einzeln praktisch getestet werden, bevor sie als vollständig bestätigt gelten.
 
-### Automatischer Changelog
-- Ein GitHub-Actions-Workflow veröffentlicht Changelog-Einträge automatisch im Discord-Changelog-Kanal.
-- Ausführliche Einträge werden in dieser Datei `CHANGELOG.md` gepflegt.
-- Der Workflow nimmt den neuesten Abschnitt dieser Datei und ergänzt einen Verweis auf den GitHub-Commit.
-- Änderungen am Hauptbranch lösen die Veröffentlichung aus; ein manueller Workflow-Start ist ebenfalls vorgesehen.
-- Der Webhook wird als geschütztes GitHub-Repository-Secret `DISCORD_CHANGELOG_WEBHOOK` gespeichert und nicht im Quellcode abgelegt.
-
-### Qualitätssicherung und aktueller Status
+### Qualitätssicherung
 - Ein automatisierter Prüfworkflow für grundlegende Python-Syntax- und Importprüfungen ist vorhanden.
-- Ein erfolgreicher CI-Lauf bestätigt die durchgeführten automatisierten Prüfungen, aber keinen vollständigen Ende-zu-Ende-Test aller Discord-Funktionen.
-- Die tatsächliche Zustellung der Changelog-Nachricht sowie die Live-Funktion von Dashboard, Tickets, Moderation und Server-Ereignisprotokollen müssen anhand ihrer jeweiligen Workflow-Läufe beziehungsweise praktischer Discord-Tests bestätigt werden.
-
-### Vorgehen bei künftigen Änderungen
-Bei jeder weiteren Bot-Änderung soll der passende Abschnitt in dieser Datei ergänzt werden: Was wurde geändert, welche Funktion betrifft es, welche Fehler wurden behoben und was wurde tatsächlich getestet. Der neueste Abschnitt wird anschließend automatisch im Discord-Changelog veröffentlicht.
+- Ein erfolgreicher CI-Lauf bestätigt nur die konkret ausgeführten automatisierten Prüfungen und nicht die fehlerfreie Live-Funktion aller Discord-Funktionen.
 
 ---
+
