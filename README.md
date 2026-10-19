@@ -1,36 +1,45 @@
 # Donnerfaust Manager
 
-Ein modularer Discord-Verwaltungsbot mit **Web-Dashboard als zentraler Bedienoberfläche**. Inspiriert von Bot-Dashboards wie Carl-bot und Galaxy Bot: Server auswählen, Bot einladen und Einstellungen über die Website verwalten.
+Der **Donnerfaust Manager** ist eine zentrale Weboberfläche für den Discord-Bot. Die Website soll alle Funktionen über ein gemeinsames Dashboard mit Menü, Discord-Anmeldung und serverbezogenen Einstellungen zugänglich machen.
 
-## Ziel: Eine Website für alle Einstellungen
-- Discord-Anmeldung
-- Serverübersicht mit Berechtigungsprüfung
-- **Bot einladen**-Schaltfläche
-- Logging: Zielkanal und Ereignisse konfigurieren
-- Tickets: Kategorien, Support-Rolle, Panel-Kanal und Texte konfigurieren
-- Moderation: Funktionen und Protokollierung konfigurieren
-- Einstellungen getrennt je Discord-Server
+## So ist das Projekt aufgeteilt
 
-Die Website soll keine Einstellungen nur optisch anzeigen: Jede Änderung muss sicher gespeichert und vom Bot verwendet werden. Der Bot-Token bleibt ausschließlich im serverseitigen Hosting und wird niemals an den Browser oder GitHub ausgeliefert.
+- **GitHub** enthält den Quellcode und die Versionshistorie.
+- **Render** betreibt die Python-Webanwendung und den Discord-Bot.
+- **Eine gemeinsame Website** enthält Startseite, Discord-Login, Serverauswahl, Logging, Ticketsystem, Moderation und Kontoverwaltung. Die Funktionen werden schrittweise vollständig angebunden.
 
-## Schubladen / Module
+GitHub Pages kann die Python-Anwendung nicht ausführen. Die eigentliche interaktive Verwaltungsoberfläche muss deshalb über den Render-Webdienst geöffnet werden. Es ist keine zweite, getrennte Verwaltungswebsite vorgesehen.
+
+## Funktionen und aktueller Stand
+
+- Discord-OAuth-Anmeldung mit serverseitig geprüftem OAuth-Status.
+- Serverübersicht mit Berechtigungsprüfung für „Server verwalten“ oder Administrator.
+- Bot-Einladung über Discord.
+- Logging: Auswahl eines Log-Kanals und Aktivierung unterstützter Ereignistypen; Einstellungen werden serverbezogen gespeichert.
+- Ticketsystem und Moderation: derzeit noch nicht vollständig an die Bot-Funktionen angebunden.
+- Konto- und Plattformverwaltung mit geschützten Admin-Aktionen.
+
+## Projektstruktur
+
+- `bot.py` — Discord-Bot
+- `app/core/` — gemeinsame technische Grundlage und Einstellungen
 - `app/modules/logging_module/` — Logging
 - `app/modules/tickets/` — Tickets
 - `app/modules/moderation/` — Moderation
-- `app/core/` — gemeinsame technische Grundlage
-- `dashboard/` — Web-Dashboard (Spezifikation vorhanden; Umsetzung steht noch aus)
+- `dashboard/app.py` — Web-Dashboard und Routen
+- `docs/` — Architektur und Projektdokumentation
 
-## Aktueller Stand
-- Discord-Bot-Grundgerüst und Modul-Ladesystem vorhanden.
-- Erste Logging-Funktionen implementiert.
-- Einfache Ticket- und Moderationsfunktionen ergänzt, noch nicht live getestet.
-- Bot-Einladungslink ist über Discord OAuth2 generierbar; die Dashboard-Schaltfläche ist noch nicht gebaut.
-- **Web-Dashboard, Discord-Login, Berechtigungsprüfung und gemeinsame persistente Datenbank sind noch nicht implementiert.**
-- Hosting und End-to-End-Tests stehen aus.
+## Hosting und Sicherheit
 
-## Sicherheits- und Hostinghinweise
-- Echte Tokens/Secrets niemals in GitHub committen oder im Chat teilen.
-- Discord Developer Portal Intents nur einschalten, wenn eine Funktion sie benötigt.
-- Ein gehosteter Bot braucht einen laufenden Prozess und dauerhafte Speicherung. Kostenlose Hosting-Angebote können schlafen gehen, begrenzt sein oder ihre Konditionen ändern.
+Die Anwendung wird als Webdienst mit dem Startbefehl aus dem `Procfile` betrieben. Benötigte Zugangsdaten werden ausschließlich als private Umgebungsvariablen in Render hinterlegt.
 
-Weitere Details: `docs/ARCHITECTURE.md` und `dashboard/README.md`.
+Wichtige Variablen:
+- `DISCORD_CLIENT_ID`
+- `DISCORD_CLIENT_SECRET`
+- `DISCORD_TOKEN`
+- `DASHBOARD_BASE_URL`
+- `SESSION_SECRET`
+
+Das Bot-Token gehört niemals in HTML, JavaScript, GitHub-Dateien oder den Browser. Die OAuth2-Callback-URL in Discord muss exakt `DASHBOARD_BASE_URL + /callback` entsprechen.
+
+**Hinweis:** Einstellungen sollten erst auf einem Testserver als produktionsbereit betrachtet werden, wenn die jeweilige Funktion vollständig vom Bot übernommen und Ende-zu-Ende geprüft wird.
