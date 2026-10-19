@@ -3,11 +3,12 @@
 SQLite is suitable for local development and a single-process starter deployment.
 For multi-instance hosting, move to PostgreSQL before scaling out.
 """
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path("data/donnerfaust_manager.sqlite3")
+DB_PATH = Path(os.getenv("DASHBOARD_DB_PATH", "data/donnerfaust_manager.sqlite3"))
 ALLOWED_SETTINGS = {
     "log_channel_id",
     "logging_message_delete",
