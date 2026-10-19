@@ -44,6 +44,23 @@ class LoggingModule(commands.Cog):
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Could not send a log message in channel %s (guild %s)", channel.id, guild.id)
 
+    async def audit_actor(self, guild: discord.Guild, target_id: int, actions: tuple[discord.AuditLogAction, ...]) -> str:
+        """Best-effort actor lookup for recent administrative changes."""
+        me = guild.me
+        if me is None or not me.guild_permissions.view_audit_log:
+            return "Nicht ermittelbar (Berechtigung „Audit-Log ansehen“ fehlt)"
+        try:
+            async for entry in guild.audit_logs(limit=15):
+                if entry.action not in actions:
+                    continue
+                if getattr(entry.target, "id", None) != target_id:
+                    continue
+                if (discord.utils.utcnow() - entry.created_at).total_seconds() > 30:
+                    continue
+                return f"{entry.user} ({entry.user.id})" if entry.user else "Unbekannt"
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Could not read audit log for guild %s", guild.id)
+        return "Nicht ermittelbar (kein passender Audit-Log-Eintrag)"
     @staticmethod
     def make_embed(title: str, description: str, color: discord.Color) -> discord.Embed:
         return discord.Embed(title=title, description=description[:4000], color=color, timestamp=datetime.now(timezone.utc))
@@ -261,11 +278,13 @@ class LoggingModule(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
-        await self.send_log(channel.guild, self.make_embed("Kanal erstellt", f"Kanal: {channel.name} ({channel.id})", discord.Color.green()), "logging_channel_events")
+        actor = await self.audit_actor(channel.guild, channel.id, (discord.AuditLogAction.channel_create,))
+        await self.send_log(channel.guild, self.make_embed("Kanal erstellt", f"**Verantwortlich:** {actor}\n**Kanal:** {channel.name} ({channel.id})", discord.Color.green()), "logging_channel_events")
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
-        await self.send_log(channel.guild, self.make_embed("Kanal gelöscht", f"Kanal: {channel.name} ({channel.id})", discord.Color.red()), "logging_channel_events")
+        actor = await self.audit_actor(channel.guild, channel.id, (discord.AuditLogAction.channel_delete,))
+        await self.send_log(channel.guild, self.make_embed("Kanal gelöscht", f"**Verantwortlich:** {actor}\n**Kanal:** {channel.name} ({channel.id})", discord.Color.red()), "logging_channel_events")
 
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel) -> None:
@@ -290,16 +309,19 @@ class LoggingModule(commands.Cog):
             if old_value != new_value and (old_value is not None or new_value is not None):
                 changes.append(f"**{label}:** {old_value} → {new_value}")
         if changes:
-            embed = self.make_embed("Kanal geändert", f"**Kanal:** {after.name} ({after.id})\\n" + "\\n".join(changes), discord.Color.orange())
+            actor = await self.audit_actor(after.guild, after.id, (discord.AuditLogAction.channel_update,))
+            embed = self.make_embed("Kanal geändert", f"**Verantwortlich:** {actor}\n**Kanal:** {after.name} ({after.id})\n" + "\n".join(changes), discord.Color.orange())
             await self.send_log(after.guild, embed, "logging_channel_events")
 
     @commands.Cog.listener()
     async def on_guild_role_create(self, role: discord.Role) -> None:
-        await self.send_log(role.guild, self.make_embed("Rolle erstellt", f"Rolle: {role.name} ({role.id})", discord.Color.green()), "logging_role_events")
+        actor = await self.audit_actor(role.guild, role.id, (discord.AuditLogAction.role_create,))
+        await self.send_log(role.guild, self.make_embed("Rolle erstellt", f"**Verantwortlich:** {actor}\n**Rolle:** {role.name} ({role.id})", discord.Color.green()), "logging_role_events")
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role: discord.Role) -> None:
-        await self.send_log(role.guild, self.make_embed("Rolle gelöscht", f"Rolle: {role.name} ({role.id})", discord.Color.red()), "logging_role_events")
+        actor = await self.audit_actor(role.guild, role.id, (discord.AuditLogAction.role_delete,))
+        await self.send_log(role.guild, self.make_embed("Rolle gelöscht", f"**Verantwortlich:** {actor}\n**Rolle:** {role.name} ({role.id})", discord.Color.red()), "logging_role_events")
 
     @commands.Cog.listener()
     async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> None:
@@ -315,7 +337,8 @@ class LoggingModule(commands.Cog):
         if before.mentionable != after.mentionable:
             changes.append("**Erwähnbar:** geändert")
         if changes:
-            embed = self.make_embed("Rolle geändert", f"**Rolle:** {after.name} ({after.id})\\n" + "\\n".join(changes), discord.Color.orange())
+            actor = await self.audit_actor(after.guild, after.id, (discord.AuditLogAction.role_update,))
+            embed = self.make_embed("Rolle geändert", f"**Verantwortlich:** {actor}\n**Rolle:** {after.name} ({after.id})\n" + "\n".join(changes), discord.Color.orange())
             await self.send_log(after.guild, embed, "logging_role_events")
 
     @commands.Cog.listener()
