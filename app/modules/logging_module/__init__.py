@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from app.core.database import get_guild_setting, set_guild_setting
@@ -101,6 +102,61 @@ class LoggingModule(commands.Cog):
             await ctx.reply("Discord hat den Testeintrag abgelehnt. Prüfe die Bot-Rechte im Log-Kanal.")
             return
         await ctx.reply(f"Testeintrag wurde in {channel.mention} gesendet.")
+
+    @app_commands.command(name="logstatus", description="Zeigt den konfigurierten Logging-Kanal.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def slash_log_status(self, interaction: discord.Interaction) -> None:
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+            return
+        channel_id = get_guild_setting(guild.id, "log_channel_id")
+        channel = guild.get_channel(int(channel_id)) if channel_id else None
+        if isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message(f"Logging-Kanal: {channel.mention}", ephemeral=True)
+        else:
+            await interaction.response.send_message("Noch kein Logging-Kanal eingerichtet. Nutze /setlogchannel und wähle einen Kanal.", ephemeral=True)
+
+    @app_commands.command(name="setlogchannel", description="Legt den Kanal für Bot-Logs fest.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.describe(channel="Textkanal, in den Ereignisse protokolliert werden")
+    async def slash_set_log_channel(self, interaction: discord.Interaction, channel: discord.TextChannel) -> None:
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+            return
+        me = guild.me
+        permissions = channel.permissions_for(me) if me else None
+        if permissions is None or not permissions.view_channel or not permissions.send_messages or not permissions.embed_links:
+            await interaction.response.send_message("Mir fehlen in diesem Kanal Rechte: Kanal ansehen, Nachrichten senden und Links einbetten.", ephemeral=True)
+            return
+        set_guild_setting(guild.id, "log_channel_id", channel.id)
+        await interaction.response.send_message(f"Logging-Kanal wurde auf {channel.mention} gesetzt.", ephemeral=True)
+
+    @app_commands.command(name="logtest", description="Sendet eine Testmeldung in den Logging-Kanal.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def slash_log_test(self, interaction: discord.Interaction) -> None:
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+            return
+        channel_id = get_guild_setting(guild.id, "log_channel_id")
+        channel = guild.get_channel(int(channel_id)) if channel_id else None
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message("Kein Logging-Kanal eingerichtet. Nutze zuerst /setlogchannel.", ephemeral=True)
+            return
+        me = guild.me
+        permissions = channel.permissions_for(me) if me else None
+        if permissions is None or not permissions.view_channel or not permissions.send_messages or not permissions.embed_links:
+            await interaction.response.send_message(f"Mir fehlen Rechte im {channel.mention}: Kanal ansehen, Nachrichten senden oder Links einbetten.", ephemeral=True)
+            return
+        try:
+            await channel.send(embed=self.make_embed("Logging-Test erfolgreich", f"Der Test wurde von {interaction.user} ausgelöst. Das Logging kann in diesem Kanal schreiben.", discord.Color.green()))
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Slash logging test failed in channel %s (guild %s)", channel.id, guild.id)
+            await interaction.response.send_message("Discord hat die Testmeldung abgelehnt. Bitte prüfe die Bot-Rechte im Logging-Kanal.", ephemeral=True)
+            return
+        await interaction.response.send_message(f"Testmeldung wurde in {channel.mention} gesendet.", ephemeral=True)
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message) -> None:
