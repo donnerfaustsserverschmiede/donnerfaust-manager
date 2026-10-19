@@ -9,4 +9,5 @@ EXTENSIONS: tuple[str, ...] = (
     "app.modules.logging_module",
     "app.modules.tickets",
     "app.modules.moderation",
+    "app.modules.platform_audit",
 )
