@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 16 * * *"
-    - cron: "0 17 * * *"
+    - cron: "7 18 * * *"
+      timezone: "Europe/Berlin"
   workflow_dispatch:
 
 permissions:
@@ -37,10 +37,6 @@ jobs:
 
           tz = ZoneInfo("Europe/Berlin")
           now = datetime.now(tz)
-
-          if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and now.hour != 18:
-              print(f"Übersprungen: lokale Uhrzeit ist {now:%H:%M %Z}.")
-              sys.exit(0)
 
           webhook = os.environ.get("DISCORD_CHANGELOG_WEBHOOK", "").strip()
           if not webhook:
