@@ -185,9 +185,9 @@ class TradeModule(commands.Cog):
                 item = item_for(db, interaction.guild.id, artikel)
                 if not item:
                     return await interaction.response.send_message("Artikel nicht gefunden.", ephemeral=True)
-                unit = cash(einzelpreis if einzelpreis is not None else (item["sell_price"] if kind == "VERKAUF" else item["buy_price"]))
+                unit = cash(einzelpreis)
                 if unit <= 0:
-                    return await interaction.response.send_message("Bitte zuerst einen Preis größer 0 eintragen.", ephemeral=True)
+                    return await interaction.response.send_message("Der vereinbarte Stückpreis muss größer als 0 sein.", ephemeral=True)
                 total = (unit * menge).quantize(Decimal("0.01"))
                 after = item["stock"] + (menge if kind == "EINKAUF" else -menge)
                 if after < 0:
@@ -204,13 +204,13 @@ class TradeModule(commands.Cog):
             log.exception("Trade failed")
             await interaction.response.send_message("Buchung fehlgeschlagen. Prüfe Eingaben und Datenbank.", ephemeral=True)
 
-    @app_commands.command(name="verkauf", description="Verkauft Waren, reduziert Lager und bucht Einnahmen.")
+    @app_commands.command(name="verkauf", description="Verkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def verkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], kunde: str,
-                      einzelpreis: app_commands.Range[float, 0, 100000000] | None = None):
+                      einzelpreis: app_commands.Range[float, 0.01, 100000000]):
         await self.trade(interaction, artikel, menge, kunde, einzelpreis, "VERKAUF")
 
-    @app_commands.command(name="einkauf", description="Kauft Waren ein, erhöht Lager und bucht Ausgaben.")
+    @app_commands.command(name="einkauf", description="Einkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def einkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], lieferant: str,
                       einzelpreis: app_commands.Range[float, 0, 100000000] | None = None):
