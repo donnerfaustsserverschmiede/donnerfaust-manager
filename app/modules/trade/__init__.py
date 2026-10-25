@@ -11,6 +11,10 @@ from app.core.database import DB_PATH
 
 log = logging.getLogger(__name__)
 
+# OPSUCHT-Wirtschaft: Rollen für Mitarbeiter- und Verwaltungszugriff.
+LEITUNG_ROLE_ID = 1564044141002752072
+MITARBEITER_ROLE_ID = 1564043999877144616
+
 
 def connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -80,7 +84,7 @@ class TradeModule(commands.Cog):
             log.exception("Trade log delivery failed")
 
     @app_commands.command(name="artikel_anlegen", description="Legt einen Artikel im zentralen Lager an.")
-    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
     async def artikel_anlegen(self, interaction: discord.Interaction, name: str, kategorie: str = "Sonstiges",
                               verkaufspreis: app_commands.Range[float, 0, 100000000] = 0,
                               einkaufspreis: app_commands.Range[float, 0, 100000000] = 0):
@@ -105,6 +109,7 @@ class TradeModule(commands.Cog):
             log.exception("Create item failed")
             await interaction.response.send_message("Artikel konnte nicht angelegt werden. Prüfe Name und Preise.", ephemeral=True)
 
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     @app_commands.command(name="lagerbestand", description="Zeigt den vollständigen Bestand, optional gefiltert.")
     async def lagerbestand(self, interaction: discord.Interaction, suche: str = "",
                            seite: app_commands.Range[int, 1, 1000] = 1):
@@ -144,11 +149,13 @@ class TradeModule(commands.Cog):
         await interaction.response.send_message(f"**{item['name']}**: {item['stock']} → **{after}** Stück.")
         await self.send_log(interaction, "Lagerbewegung", f"Artikel: {item['name']}\nÄnderung: {delta*menge:+}\nBestand: {item['stock']} → {after}\nVon: {interaction.user.mention}\nNotiz: {notiz or '–'}")
 
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     @app_commands.command(name="einlagern", description="Bucht Ressourcen ins Lager.")
     async def einlagern(self, interaction: discord.Interaction, artikel: str,
                         menge: app_commands.Range[int, 1, 100000000], notiz: str = ""):
         await self.change_stock(interaction, artikel, menge, 1, notiz)
 
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     @app_commands.command(name="auslagern", description="Bucht Ressourcen aus dem Lager aus.")
     async def auslagern(self, interaction: discord.Interaction, artikel: str,
                         menge: app_commands.Range[int, 1, 100000000], notiz: str = ""):
@@ -204,16 +211,18 @@ class TradeModule(commands.Cog):
             log.exception("Trade failed")
             await interaction.response.send_message("Buchung fehlgeschlagen. Prüfe Eingaben und Datenbank.", ephemeral=True)
 
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     @app_commands.command(name="verkauf", description="Verkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def verkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], kunde: str,
                       einzelpreis: app_commands.Range[float, 0.01, 100000000]):
         await self.trade(interaction, artikel, menge, kunde, einzelpreis, "VERKAUF")
 
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     @app_commands.command(name="einkauf", description="Einkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def einkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], lieferant: str,
-                      einzelpreis: app_commands.Range[float, 0, 100000000] | None = None):
+                      einzelpreis: app_commands.Range[float, 0.01, 100000000]):
         await self.trade(interaction, artikel, menge, lieferant, einzelpreis, "EINKAUF")
 
     @app_commands.command(name="startkapital", description="Erfasst das vorhandene Startkapital einmalig im Kassenbuch.")
@@ -317,6 +326,7 @@ class TradeModule(commands.Cog):
         embed.set_footer(text=f"Seite {seite} · 15 Einträge je Seite")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     @app_commands.command(name="preisliste", description="Zeigt die eigene Preisliste aller Artikel.")
     async def preisliste(self, interaction: discord.Interaction, seite: app_commands.Range[int, 1, 1000] = 1):
         if not interaction.guild:
