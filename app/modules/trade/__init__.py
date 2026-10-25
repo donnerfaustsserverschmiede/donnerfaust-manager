@@ -109,27 +109,29 @@ class TradeModule(commands.Cog):
             log.exception("Create item failed")
             await interaction.response.send_message("Artikel konnte nicht angelegt werden. Prüfe Name und Preise.", ephemeral=True)
 
+@app_commands.command(name="lagerbestand", description="Öffnet das interaktive Lager.")
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
-    @app_commands.command(name="lagerbestand", description="Zeigt den vollständigen Bestand, optional gefiltert.")
-    async def lagerbestand(self, interaction: discord.Interaction, suche: str = "",
-                           seite: app_commands.Range[int, 1, 1000] = 1):
+    async def lagerbestand(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
+        view = InventoryView(self, interaction.guild.id, interaction.user.id)
+        await interaction.response.send_message(embed=view.make_embed(), view=view, ephemeral=True)
+
+    @app_commands.command(name="artikel_loeschen", description="Löscht einen Lagerartikel mit Bestand 0.")
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
+    async def artikel_loeschen(self, interaction: discord.Interaction, artikel: str):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
         with connect() as db:
-            rows = db.execute("""SELECT name,category,stock,sell_price,buy_price FROM trade_items
-                WHERE guild_id=? AND (?='' OR name LIKE ? OR category LIKE ?)
-                ORDER BY category COLLATE NOCASE,name COLLATE NOCASE""",
-                (interaction.guild.id, suche, f"%{suche}%", f"%{suche}%")).fetchall()
-        if not rows:
-            return await interaction.response.send_message("Keine Artikel gefunden. Nutze /artikel_anlegen, um Artikel einzurichten.", ephemeral=True)
-        pages = max(1, (len(rows)+19)//20)
-        if seite > pages:
-            return await interaction.response.send_message(f"Es gibt {pages} Seite(n).", ephemeral=True)
-        lines = [f"**{discord.utils.escape_markdown(r['name'])}** · {r['category']}\nBestand: **{r['stock']:,}** · Verkauf: {fmt(r['sell_price'])} · Einkauf: {fmt(r['buy_price'])}".replace(",", ".") for r in rows[(seite-1)*20:seite*20]]
-        embed = discord.Embed(title=f"📦 Zentrales Lager · {len(rows)} Artikel",
-            description="\n\n".join(lines)[:4000], color=discord.Color.blurple())
-        embed.set_footer(text=f"Seite {seite}/{pages} · Filter: {suche or 'keiner'}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            item = item_for(db, interaction.guild.id, artikel)
+            if not item:
+                return await interaction.response.send_message("Artikel nicht gefunden.", ephemeral=True)
+            if item["stock"] != 0:
+                return await interaction.response.send_message("Löschen ist nur bei Bestand 0 möglich. Buche den Bestand zuerst aus.", ephemeral=True)
+            db.execute("DELETE FROM trade_items WHERE guild_id=? AND item_id=?", (interaction.guild.id, item["item_id"]))
+            book(db, interaction.guild.id, "INFO", 0, f"Artikel gelöscht: {item['name']}", interaction.user)
+        await interaction.response.send_message(f"Artikel **{discord.utils.escape_markdown(item['name'])}** gelöscht.", ephemeral=True)
+        await self.send_log(interaction, "Lagerartikel gelöscht", f"{item['name']} · von {interaction.user.mention}")
 
     async def change_stock(self, interaction, artikel, menge, delta, notiz=""):
         if not interaction.guild:
@@ -343,6 +345,132 @@ class TradeModule(commands.Cog):
         embed = discord.Embed(title="🪙 Eigene Handelspreisliste", description="\n".join(lines)[:4000], color=discord.Color.gold())
         embed.set_footer(text=f"Seite {seite}/{pages} · Preis pro Stück")
         await interaction.response.send_message(embed=embed)
+
+
+
+class AddInventoryItemModal(discord.ui.Modal, title="Artikel hinzufügen"):
+    name = discord.ui.TextInput(label="Artikelname", placeholder="z. B. Cobblestone", max_length=80)
+    category = discord.ui.TextInput(label="Kategorie", placeholder="Bergbau, Holz, Kampf, Nahrung, Sonstiges, Besonderes", max_length=30)
+
+    def __init__(self, module, guild_id, user_id):
+        super().__init__()
+        self.module, self.guild_id, self.user_id = module, guild_id, user_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id or not interaction.guild or interaction.guild.id != self.guild_id:
+            return await interaction.response.send_message("Dieses Fenster gehört zu einer anderen Person.", ephemeral=True)
+        name = str(self.name.value).strip()
+        raw_category = str(self.category.value).strip().casefold()
+        categories = {"bergbau":"Bergbau", "holz":"Holz", "kampf":"Kampf", "nahrung":"Nahrung", "sonstiges":"Sonstiges", "besonderes":"Besonderes"}
+        if not name:
+            return await interaction.response.send_message("Bitte einen Artikelnamen angeben.", ephemeral=True)
+        if raw_category not in categories:
+            return await interaction.response.send_message("Kategorie ungültig. Erlaubt: Bergbau, Holz, Kampf, Nahrung, Sonstiges, Besonderes.", ephemeral=True)
+        try:
+            with connect() as db:
+                if item_for(db, self.guild_id, name):
+                    return await interaction.response.send_message("Dieser Artikel existiert bereits.", ephemeral=True)
+                next_id = db.execute("SELECT COALESCE(MAX(item_id),0)+1 FROM trade_items WHERE guild_id=?", (self.guild_id,)).fetchone()[0]
+                db.execute("INSERT INTO trade_items(guild_id,item_id,name,category,stock,sell_price,buy_price) VALUES(?,?,?,?,0,'0.00','0.00')", (self.guild_id, next_id, name, categories[raw_category]))
+                book(db, self.guild_id, "INFO", 0, f"Artikel angelegt: {name} ({categories[raw_category]})", interaction.user)
+            await interaction.response.send_message(f"Artikel **{discord.utils.escape_markdown(name)}** wurde angelegt. Kategorie: {categories[raw_category]} · Startbestand: 0.", ephemeral=True)
+            await self.module.send_log(interaction, "Lagerartikel angelegt", f"{name}\nKategorie: {categories[raw_category]}\nVon: {interaction.user.mention}")
+        except sqlite3.Error:
+            log.exception("Inventory item creation failed")
+            await interaction.response.send_message("Artikel konnte nicht gespeichert werden.", ephemeral=True)
+
+
+class StockMovementModal(discord.ui.Modal, title="Lagerbestand anpassen"):
+    quantity = discord.ui.TextInput(label="Menge", placeholder="z. B. 64", max_length=9)
+
+    def __init__(self, view):
+        super().__init__()
+        self.inventory_view = view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        view = self.inventory_view
+        if interaction.user.id != view.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        if not view.selected_item or not view.selected_action:
+            return await interaction.response.send_message("Bitte zuerst Artikel und Eingabe/Ausgabe auswählen.", ephemeral=True)
+        try:
+            quantity = int(str(self.quantity.value).strip())
+            if quantity < 1 or quantity > 100000000:
+                raise ValueError
+        except ValueError:
+            return await interaction.response.send_message("Die Menge muss eine ganze Zahl größer als 0 sein.", ephemeral=True)
+        with connect() as db:
+            item = item_for(db, view.guild_id, view.selected_item)
+            if not item:
+                return await interaction.response.send_message("Artikel nicht gefunden. Öffne /lagerbestand erneut.", ephemeral=True)
+            delta = quantity if view.selected_action == "EINGANG" else -quantity
+            after = item["stock"] + delta
+            if after < 0:
+                return await interaction.response.send_message(f"Nicht genug Bestand. Vorhanden: {item['stock']}.", ephemeral=True)
+            db.execute("UPDATE trade_items SET stock=?,updated_at=CURRENT_TIMESTAMP WHERE guild_id=? AND item_id=?", (after, view.guild_id, item["item_id"]))
+            db.execute("INSERT INTO trade_transactions(guild_id,item_name,kind,quantity,unit_price,total,actor_id,actor_name,note) VALUES(?,?,?,?,?,?,?,?,?)", (view.guild_id, item["name"], "EINLAGERUNG" if delta > 0 else "AUSLAGERUNG", quantity, "0", "0", interaction.user.id, str(interaction.user), "Interaktives Lagerfenster"))
+            book(db, view.guild_id, "INFO", 0, f"Lager {item['name']}: {item['stock']} -> {after}", interaction.user)
+        await interaction.response.send_message(f"**{item['name']}**: {item['stock']} → **{after}** Stück gespeichert.", ephemeral=True)
+        await view.module.send_log(interaction, "Lagerbestand angepasst", f"Artikel: {item['name']}\nAktion: {'Eingabe' if delta > 0 else 'Ausgabe'} {quantity}\nBestand: {item['stock']} → {after}\nVon: {interaction.user.mention}")
+
+
+class InventoryView(discord.ui.View):
+    def __init__(self, module, guild_id, user_id):
+        super().__init__(timeout=300)
+        self.module, self.guild_id, self.user_id = module, guild_id, user_id
+        self.selected_item, self.selected_action = None, None
+        with connect() as db:
+            rows = db.execute("SELECT name,category,stock FROM trade_items WHERE guild_id=? ORDER BY name COLLATE NOCASE LIMIT 25", (guild_id,)).fetchall()
+        self.add_item(InventoryItemSelect(rows))
+        self.add_item(StockActionSelect())
+
+    def make_embed(self):
+        with connect() as db:
+            rows = db.execute("SELECT name,category,stock FROM trade_items WHERE guild_id=? ORDER BY category COLLATE NOCASE,name COLLATE NOCASE LIMIT 25", (self.guild_id,)).fetchall()
+            total = db.execute("SELECT COUNT(*) FROM trade_items WHERE guild_id=?", (self.guild_id,)).fetchone()[0]
+        lines = [f"**{discord.utils.escape_markdown(r['name'])}** · {r['category']} — Bestand: **{r['stock']}**" for r in rows]
+        embed = discord.Embed(title=f"📦 Zentrales Lager · {total} Artikel", description="\n".join(lines)[:3900] or "Noch keine Artikel. Nutze **+ Artikel hinzufügen**.", color=discord.Color.blurple())
+        embed.set_footer(text="Artikel auswählen → Eingabe/Ausgabe wählen → Menge eingeben und speichern.")
+        return embed
+
+    @discord.ui.button(label="+ Artikel hinzufügen", style=discord.ButtonStyle.success, row=2)
+    async def add_item_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        await interaction.response.send_modal(AddInventoryItemModal(self.module, self.guild_id, self.user_id))
+
+    @discord.ui.button(label="Menge eingeben & speichern", style=discord.ButtonStyle.primary, row=2)
+    async def save_movement_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        if not self.selected_item or not self.selected_action:
+            return await interaction.response.send_message("Bitte zuerst Artikel und Eingabe/Ausgabe auswählen.", ephemeral=True)
+        await interaction.response.send_modal(StockMovementModal(self))
+
+
+class InventoryItemSelect(discord.ui.Select):
+    def __init__(self, rows):
+        options = [discord.SelectOption(label=r["name"][:100], description=f"Bestand: {r['stock']}"[:100], value=r["name"]) for r in rows]
+        super().__init__(placeholder="Artikel auswählen…", min_values=1, max_values=1, options=options or [discord.SelectOption(label="Noch keine Artikel", value="__none__")], disabled=not bool(rows), row=0)
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        if interaction.user.id != view.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        view.selected_item = self.values[0]
+        await interaction.response.send_message(f"Ausgewählt: **{discord.utils.escape_markdown(view.selected_item)}**", ephemeral=True)
+
+
+class StockActionSelect(discord.ui.Select):
+    def __init__(self):
+        super().__init__(placeholder="Eingabe oder Ausgabe auswählen…", min_values=1, max_values=1, options=[discord.SelectOption(label="Eingabe (ins Lager)", value="EINGANG", emoji="📥"), discord.SelectOption(label="Ausgabe (aus dem Lager)", value="AUSGANG", emoji="📤")], row=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        if interaction.user.id != view.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        view.selected_action = self.values[0]
+        await interaction.response.send_message(f"Aktion ausgewählt: {'Eingabe' if self.values[0] == 'EINGANG' else 'Ausgabe'}", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
