@@ -43,3 +43,17 @@ Wichtige Variablen:
 Das Bot-Token gehört niemals in HTML, JavaScript, GitHub-Dateien oder den Browser. Die OAuth2-Callback-URL in Discord muss exakt `DASHBOARD_BASE_URL + /callback` entsprechen.
 
 **Hinweis:** Einstellungen sollten erst auf einem Testserver als produktionsbereit betrachtet werden, wenn die jeweilige Funktion vollständig vom Bot übernommen und Ende-zu-Ende geprüft wird.
+
+## Wirtschaft & Handel (neu)
+Das Modul `app/modules/trade/` wird vom bestehenden Bot geladen und ergänzt ihn um:
+- `/artikel_anlegen`: Artikel, Kategorie sowie Ein- und Verkaufspreis anlegen.
+- `/lagerbestand`: kompletten Artikelbestand anzeigen, nach Name/Kategorie filtern und seitenweise blättern.
+- `/einlagern` und `/auslagern`: Lagerbewegungen mit Mitarbeiter und Notiz protokollieren; negative Bestände werden verhindert.
+- `/preis_setzen`: Verkaufspreis und optional Einkaufspreis ändern.
+- `/verkauf` und `/einkauf`: Handel mit Menge, Handelspartner und Stückpreis buchen; Lager und Kassenbuch werden in einer Datenbanktransaktion aktualisiert.
+- `/preisliste`: eigene Verkaufspreise anzeigen.
+- `/buchungen`: letzte Lager- und Handelsvorgänge anzeigen.
+- `/kassenbuch`: letzte Finanzbuchungen anzeigen.
+- `/bilanz`: Einnahmen, Ausgaben, Netto-Cashflow und rechnerischen Lagerwert anzeigen.
+
+Die Handelsdaten werden nach Discord-Server getrennt in derselben SQLite-Datenbank wie die bestehenden Einstellungen gespeichert. Für produktiven Betrieb auf Render muss sichergestellt sein, dass der Datenbankpfad auf einem persistenten Datenträger liegt oder die Datenbank auf einen dauerhaften PostgreSQL-Dienst migriert wird. Ein flüchtiges Dateisystem ist keine sichere dauerhafte Speicherung.
