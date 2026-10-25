@@ -194,9 +194,6 @@ class TradeModule(commands.Cog):
                     return await interaction.response.send_message(f"Verkauf abgebrochen: nur {item['stock']} Stück auf Lager.", ephemeral=True)
                 db.execute("UPDATE trade_items SET stock=?,updated_at=CURRENT_TIMESTAMP WHERE guild_id=? AND item_id=?",
                            (after, interaction.guild.id, item["item_id"]))
-                if kind == "VERKAUF" and einzelpreis is not None:
-                    db.execute("UPDATE trade_items SET sell_price=? WHERE guild_id=? AND item_id=?",
-                               (str(unit), interaction.guild.id, item["item_id"]))
                 db.execute("INSERT INTO trade_transactions(guild_id,item_name,kind,quantity,unit_price,total,partner,actor_id,actor_name) VALUES(?,?,?,?,?,?,?,?,?)",
                            (interaction.guild.id, item["name"], kind, menge, str(unit), str(total), partner[:150], interaction.user.id, str(interaction.user)))
                 book(db, interaction.guild.id, "EINNAHME" if kind == "VERKAUF" else "AUSGABE", total,
@@ -283,6 +280,7 @@ class TradeModule(commands.Cog):
         embed.add_field(name="Operative Einnahmen", value=fmt(income))
         embed.add_field(name="Ausgaben", value=fmt(expense))
         embed.add_field(name="Netto-Cashflow", value=fmt(income-expense))
+        embed.add_field(name="Kassenstand inkl. Startkapital", value=fmt(Decimal(str(sums["capital"])) + income - expense), inline=False)
         embed.add_field(name="Lagerwert (Einkaufspreise)", value=fmt(stock["value"]))
         embed.add_field(name="Artikel / Menge", value=f"{stock['n']} Artikel · {stock['units']} Stück")
         embed.add_field(name="Handelsvorgänge", value=str(count))
