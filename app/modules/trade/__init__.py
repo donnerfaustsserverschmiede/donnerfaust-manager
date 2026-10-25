@@ -219,6 +219,49 @@ class TradeModule(commands.Cog):
                       einzelpreis: app_commands.Range[float, 0, 100000000] | None = None):
         await self.trade(interaction, artikel, menge, lieferant, einzelpreis, "EINKAUF")
 
+    @app_commands.command(name="startkapital", description="Erfasst das vorhandene Startkapital einmalig im Kassenbuch.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def startkapital(self, interaction: discord.Interaction, betrag: app_commands.Range[float, 0.01, 100000000], notiz: str = "Anfangsbestand"):
+        if not interaction.guild:
+            return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
+        try:
+            amount = cash(betrag)
+            with connect() as db:
+                exists = db.execute("SELECT 1 FROM trade_cashbook WHERE guild_id=? AND kind='KAPITAL' LIMIT 1", (interaction.guild.id,)).fetchone()
+                if exists:
+                    return await interaction.response.send_message("Startkapital wurde bereits erfasst. Weitere Korrekturen bitte über /kassenbuch_buchen buchen.", ephemeral=True)
+                book(db, interaction.guild.id, "KAPITAL", amount, f"Startkapital: {notiz}", interaction.user)
+            await interaction.response.send_message(f"Startkapital von **{fmt(amount)}** wurde erfasst. Es wird separat vom operativen Umsatz ausgewiesen.", ephemeral=True)
+            await self.send_log(interaction, "Startkapital erfasst", f"Betrag: {fmt(amount)}\\nNotiz: {notiz}\\nVon: {interaction.user.mention}")
+        except (ValueError, sqlite3.Error):
+            log.exception("Starting capital entry failed")
+            await interaction.response.send_message("Startkapital konnte nicht erfasst werden.", ephemeral=True)
+
+    @app_commands.command(name="kassenbuch_buchen", description="Erfasst eine sonstige Einnahme oder Ausgabe.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.choices(art=[
+        app_commands.Choice(name="Einnahme", value="EINNAHME"),
+        app_commands.Choice(name="Ausgabe", value="AUSGABE"),
+    ])
+    async def kassenbuch_buchen(self, interaction: discord.Interaction,
+                                art: app_commands.Choice[str],
+                                betrag: app_commands.Range[float, 0.01, 100000000],
+                                beschreibung: str):
+        if not interaction.guild:
+            return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
+        try:
+            amount = cash(betrag)
+            description = beschreibung.strip()
+            if not description:
+                return await interaction.response.send_message("Bitte eine Beschreibung angeben.", ephemeral=True)
+            with connect() as db:
+                book(db, interaction.guild.id, art.value, amount, description, interaction.user)
+            await interaction.response.send_message(f"{art.name} von **{fmt(amount)}** wurde im Kassenbuch erfasst.", ephemeral=True)
+            await self.send_log(interaction, f"Kassenbuch: {art.name}", f"Betrag: {fmt(amount)}\\nBeschreibung: {description}\\nVon: {interaction.user.mention}")
+        except (ValueError, sqlite3.Error):
+            log.exception("Manual cashbook entry failed")
+            await interaction.response.send_message("Kassenbuchung fehlgeschlagen.", ephemeral=True)
+
     @app_commands.command(name="bilanz", description="Zeigt Einnahmen, Ausgaben, Netto-Cashflow und Lagerwert.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def bilanz(self, interaction: discord.Interaction):
@@ -227,7 +270,8 @@ class TradeModule(commands.Cog):
         with connect() as db:
             sums = db.execute("""SELECT
                 COALESCE(SUM(CASE WHEN kind='EINNAHME' THEN CAST(amount AS REAL) ELSE 0 END),0) income,
-                COALESCE(SUM(CASE WHEN kind='AUSGABE' THEN CAST(amount AS REAL) ELSE 0 END),0) expense
+                COALESCE(SUM(CASE WHEN kind='AUSGABE' THEN CAST(amount AS REAL) ELSE 0 END),0) expense,
+                COALESCE(SUM(CASE WHEN kind='KAPITAL' THEN CAST(amount AS REAL) ELSE 0 END),0) capital
                 FROM trade_cashbook WHERE guild_id=?""", (interaction.guild.id,)).fetchone()
             stock = db.execute("SELECT COUNT(*) n,COALESCE(SUM(stock),0) units,COALESCE(SUM(stock*CAST(buy_price AS REAL)),0) value FROM trade_items WHERE guild_id=?",
                                (interaction.guild.id,)).fetchone()
@@ -235,7 +279,8 @@ class TradeModule(commands.Cog):
                                (interaction.guild.id,)).fetchone()[0]
         income, expense = Decimal(str(sums["income"])), Decimal(str(sums["expense"]))
         embed = discord.Embed(title="📊 Handelsbilanz", color=discord.Color.gold())
-        embed.add_field(name="Einnahmen", value=fmt(income))
+        embed.add_field(name="Startkapital", value=fmt(sums["capital"]))
+        embed.add_field(name="Operative Einnahmen", value=fmt(income))
         embed.add_field(name="Ausgaben", value=fmt(expense))
         embed.add_field(name="Netto-Cashflow", value=fmt(income-expense))
         embed.add_field(name="Lagerwert (Einkaufspreise)", value=fmt(stock["value"]))
