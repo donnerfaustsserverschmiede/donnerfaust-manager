@@ -109,7 +109,7 @@ class TradeModule(commands.Cog):
             log.exception("Create item failed")
             await interaction.response.send_message("Artikel konnte nicht angelegt werden. Prüfe Name und Preise.", ephemeral=True)
 
-@app_commands.command(name="lagerbestand", description="Öffnet das interaktive Lager.")
+    @app_commands.command(name="lagerbestand", description="Öffnet das interaktive Lager.")
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     async def lagerbestand(self, interaction: discord.Interaction):
         if not interaction.guild:
