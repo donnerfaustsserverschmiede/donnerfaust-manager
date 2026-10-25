@@ -229,7 +229,7 @@ class TradeModule(commands.Cog):
                     return await interaction.response.send_message("Startkapital wurde bereits erfasst. Weitere Korrekturen bitte über /kassenbuch_buchen buchen.", ephemeral=True)
                 book(db, interaction.guild.id, "KAPITAL", amount, f"Startkapital: {notiz}", interaction.user)
             await interaction.response.send_message(f"Startkapital von **{fmt(amount)}** wurde erfasst. Es wird separat vom operativen Umsatz ausgewiesen.", ephemeral=True)
-            await self.send_log(interaction, "Startkapital erfasst", f"Betrag: {fmt(amount)}\\nNotiz: {notiz}\\nVon: {interaction.user.mention}")
+            await self.send_log(interaction, "Startkapital erfasst", f"Betrag: {fmt(amount)}\nNotiz: {notiz}\nVon: {interaction.user.mention}")
         except (ValueError, sqlite3.Error):
             log.exception("Starting capital entry failed")
             await interaction.response.send_message("Startkapital konnte nicht erfasst werden.", ephemeral=True)
@@ -254,7 +254,7 @@ class TradeModule(commands.Cog):
             with connect() as db:
                 book(db, interaction.guild.id, art.value, amount, description, interaction.user)
             await interaction.response.send_message(f"{art.name} von **{fmt(amount)}** wurde im Kassenbuch erfasst.", ephemeral=True)
-            await self.send_log(interaction, f"Kassenbuch: {art.name}", f"Betrag: {fmt(amount)}\\nBeschreibung: {description}\\nVon: {interaction.user.mention}")
+            await self.send_log(interaction, f"Kassenbuch: {art.name}", f"Betrag: {fmt(amount)}\nBeschreibung: {description}\nVon: {interaction.user.mention}")
         except (ValueError, sqlite3.Error):
             log.exception("Manual cashbook entry failed")
             await interaction.response.send_message("Kassenbuchung fehlgeschlagen.", ephemeral=True)
