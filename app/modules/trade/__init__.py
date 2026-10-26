@@ -144,16 +144,31 @@ class TradeModule(commands.Cog):
         await interaction.followup.send("Lagerübersicht wurde aktualisiert.", ephemeral=True)
 
     async def send_log(self, interaction, title, description):
+        """Send all trade/lager events to the dedicated audit channel."""
         try:
-            from app.core.database import get_guild_setting
             guild = interaction.guild
-            channel_id = get_guild_setting(guild.id, "log_channel_id") if guild else None
-            channel = guild.get_channel(int(channel_id)) if channel_id and guild else None
-            if isinstance(channel, discord.TextChannel):
-                await channel.send(embed=discord.Embed(title=title, description=description[:3900],
-                    color=discord.Color.gold(), timestamp=datetime.now(timezone.utc)))
+            if not guild:
+                return
+            channel = self.bot.get_channel(1564254704068853901)
+            if channel is None:
+                channel = await self.bot.fetch_channel(1564254704068853901)
+            if not isinstance(channel, discord.TextChannel):
+                log.error("Audit channel 1564254704068853901 is not a text channel")
+                return
+            embed = discord.Embed(
+                title=title[:256],
+                description=description[:3900],
+                color=discord.Color.gold(),
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(name="Server", value=f"{guild.name} ({guild.id})", inline=False)
+            embed.add_field(name="Ausgeführt von", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+            if interaction.channel:
+                embed.add_field(name="Ursprungskanal", value=f"{interaction.channel.mention} ({interaction.channel.id})", inline=False)
+            await channel.send(embed=embed)
         except Exception:
-            log.exception("Trade log delivery failed")
+            log.exception("Trade audit log delivery failed")
+
 
     @app_commands.command(name="artikel_anlegen", description="Legt einen Artikel im zentralen Lager an.")
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
