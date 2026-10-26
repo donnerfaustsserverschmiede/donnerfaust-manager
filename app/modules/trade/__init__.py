@@ -123,6 +123,15 @@ class TradeModule(commands.Cog):
         self.bot = bot
         init_db()
 
+    @app_commands.command(name="lageruebersicht_aktualisieren", description="Erstellt oder aktualisiert die dauerhafte Lagerliste.")
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
+    async def lageruebersicht_aktualisieren(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await refresh_inventory_overview(self.bot, interaction.guild.id)
+        await interaction.followup.send("Lagerübersicht wurde aktualisiert.", ephemeral=True)
+
     async def send_log(self, interaction, title, description):
         try:
             from app.core.database import get_guild_setting
