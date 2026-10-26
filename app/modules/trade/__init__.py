@@ -74,13 +74,13 @@ async def item_autocomplete(interaction: discord.Interaction, current: str):
     if not interaction.guild:
         return []
 
-    search = current.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    search = current.strip()
     try:
         init_db()
         with connect() as db:
             rows = db.execute(
                 """SELECT name, stock FROM trade_items
-                   WHERE guild_id = ? AND name LIKE ? ESCAPE '\\\\' COLLATE NOCASE
+                   WHERE guild_id = ? AND name LIKE ? COLLATE NOCASE
                    ORDER BY name COLLATE NOCASE LIMIT 25""",
                 (interaction.guild.id, f"{search}%"),
             ).fetchall()
