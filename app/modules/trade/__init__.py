@@ -69,14 +69,38 @@ def book(db, guild_id, kind, amount, description, user):
                (guild_id, kind, str(amount), description[:500], user.id, str(user)[:100]))
 
 
+def ensure_guild_items(guild_id: int, actor=None) -> int:
+    """Populate an empty guild inventory from the bundled Minecraft item catalogue."""
+    init_db()
+    with connect() as db:
+        count = db.execute("SELECT COUNT(*) FROM trade_items WHERE guild_id=?", (guild_id,)).fetchone()[0]
+        if count:
+            return 0
+        source = Path(__file__).resolve().parents[3] / "data" / "minecraft_items_1_21_4.json"
+        try:
+            items = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            log.exception("Minecraft item catalogue could not be loaded")
+            return 0
+        next_id = 1
+        for item in items:
+            db.execute(
+                "INSERT OR IGNORE INTO trade_items(guild_id,item_id,name,category,stock,sell_price,buy_price) VALUES(?,?,?,?,0,'0.00','0.00')",
+                (guild_id, next_id, item["name"], item.get("category", "Sonstiges")),
+            )
+            next_id += 1
+        if actor is not None:
+            book(db, guild_id, "INFO", 0, f"Automatischer Import beim ersten Lagerzugriff: {len(items)} Minecraft-Items", actor)
+        return len(items)
+
+
 async def item_autocomplete(interaction: discord.Interaction, current: str):
     """Filter inventory choices by the beginning of the entered article name."""
     if not interaction.guild:
         return []
-
-    search = current.strip()
     try:
-        init_db()
+        ensure_guild_items(interaction.guild.id, interaction.user)
+        search = current.strip()
         with connect() as db:
             rows = db.execute(
                 """SELECT name, stock FROM trade_items
@@ -85,10 +109,7 @@ async def item_autocomplete(interaction: discord.Interaction, current: str):
                 (interaction.guild.id, f"{search}%"),
             ).fetchall()
         return [
-            app_commands.Choice(
-                name=f"{row['name']} · Bestand {row['stock']}"[:100],
-                value=row["name"][:100],
-            )
+            app_commands.Choice(name=f"{row['name']} · Bestand {row['stock']}"[:100], value=row["name"][:100])
             for row in rows
         ]
     except (sqlite3.Error, TypeError, ValueError):
@@ -201,6 +222,7 @@ class TradeModule(commands.Cog):
     async def lagerbestand(self, interaction: discord.Interaction):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
+        ensure_guild_items(interaction.guild.id, interaction.user)
         view = InventoryView(self, interaction.guild.id, interaction.user.id)
         await interaction.response.send_message(embed=view.make_embed(), view=view, ephemeral=True)
 
@@ -239,20 +261,6 @@ class TradeModule(commands.Cog):
         await interaction.response.send_message(f"**{item['name']}**: {item['stock']} → **{after}** Stück.")
         await refresh_inventory_overview(self.bot, interaction.guild.id)
         await self.send_log(interaction, "Lagerbewegung", f"Artikel: {item['name']}\nÄnderung: {delta*menge:+}\nBestand: {item['stock']} → {after}\nVon: {interaction.user.mention}\nNotiz: {notiz or '–'}")
-
-    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
-    @app_commands.autocomplete(artikel=item_autocomplete)
-    @app_commands.command(name="einlagern", description="Bucht Ressourcen ins Lager.")
-    async def einlagern(self, interaction: discord.Interaction, artikel: str,
-                        menge: app_commands.Range[int, 1, 100000000], notiz: str = ""):
-        await self.change_stock(interaction, artikel, menge, 1, notiz)
-
-    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
-    @app_commands.autocomplete(artikel=item_autocomplete)
-    @app_commands.command(name="auslagern", description="Bucht Ressourcen aus dem Lager aus.")
-    async def auslagern(self, interaction: discord.Interaction, artikel: str,
-                        menge: app_commands.Range[int, 1, 100000000], notiz: str = ""):
-        await self.change_stock(interaction, artikel, menge, -1, notiz)
 
     @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="preis_setzen", description="Setzt Verkaufspreis und optional Einkaufspreis.")
@@ -507,6 +515,7 @@ class StockMovementModal(discord.ui.Modal, title="Lagerbestand anpassen"):
             book(db, view.guild_id, "INFO", 0, f"Lager {item['name']}: {item['stock']} -> {after}", interaction.user)
         await interaction.response.send_message(f"**{item['name']}**: {item['stock']} → **{after}** Stück gespeichert.", ephemeral=True)
         await view.module.send_log(interaction, "Lagerbestand angepasst", f"Artikel: {item['name']}\nAktion: {'Eingabe' if delta > 0 else 'Ausgabe'} {quantity}\nBestand: {item['stock']} → {after}\nVon: {interaction.user.mention}")
+        await refresh_inventory_overview(view.module.bot, view.guild_id)
 
 
 class InventoryView(discord.ui.View):
