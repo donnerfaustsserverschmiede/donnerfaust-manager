@@ -1,3 +1,5 @@
+from pathlib import Path
+import json
 """Wirtschaft & Handel: Lager, Preise, Handel und Kassenbuch."""
 import logging
 import sqlite3
@@ -83,6 +85,39 @@ async def item_autocomplete(interaction: discord.Interaction, current: str):
 
 
 class TradeModule(commands.Cog):
+    @app_commands.command(name="minecraft_items_importieren", description="Importiert alle Standard-Items aus Minecraft Java 1.21.4 mit Bestand 0.")
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
+    async def minecraft_items_importieren(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
+        source = Path(__file__).resolve().parents[3] / "data" / "minecraft_items_1_21_4.json"
+        try:
+            items = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            log.exception("Minecraft item list could not be loaded")
+            return await interaction.response.send_message("Die Minecraft-Itemliste konnte nicht geladen werden.", ephemeral=True)
+        added = 0
+        skipped = 0
+        with connect() as db:
+            next_id = db.execute("SELECT COALESCE(MAX(item_id),0)+1 FROM trade_items WHERE guild_id=?", (interaction.guild.id,)).fetchone()[0]
+            for item in items:
+                if item_for(db, interaction.guild.id, item["name"]):
+                    skipped += 1
+                    continue
+                db.execute(
+                    "INSERT INTO trade_items(guild_id,item_id,name,category,stock,sell_price,buy_price) VALUES(?,?,?,?,0,?,?)",
+                    (interaction.guild.id, next_id, item["name"], item.get("category", "Sonstiges"), "0.00", "0.00"),
+                )
+                next_id += 1
+                added += 1
+            book(db, interaction.guild.id, "INFO", 0, f"Minecraft-Standarditems importiert: {added} neu, {skipped} bereits vorhanden", interaction.user)
+        await interaction.response.send_message(
+            f"Minecraft Java 1.21.4: **{added}** Artikel neu angelegt, **{skipped}** bereits vorhanden übersprungen. Alle neuen Bestände sind **0**; Preise stehen zunächst auf 0,00.",
+            ephemeral=True,
+        )
+        await self.send_log(interaction, "Minecraft-Items importiert", f"Neu: {added}\\nÜbersprungen: {skipped}\\nVersion: Java 1.21.4")
+
+
     def __init__(self, bot):
         self.bot = bot
         init_db()
