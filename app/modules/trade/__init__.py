@@ -222,9 +222,12 @@ class TradeModule(commands.Cog):
     async def lagerbestand(self, interaction: discord.Interaction):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
-        ensure_guild_items(interaction.guild.id, interaction.user)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        imported = ensure_guild_items(interaction.guild.id, interaction.user)
         view = InventoryView(self, interaction.guild.id, interaction.user.id)
-        await interaction.response.send_message(embed=view.make_embed(), view=view, ephemeral=True)
+        if imported:
+            log.info("Imported %s catalogue items for guild %s", imported, interaction.guild.id)
+        await interaction.edit_original_response(embed=view.make_embed(), view=view)
 
     @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="artikel_loeschen", description="Löscht einen Lagerartikel mit Bestand 0.")
