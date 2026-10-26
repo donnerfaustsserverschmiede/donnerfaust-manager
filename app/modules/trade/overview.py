@@ -20,6 +20,26 @@ async def refresh(bot, guild_id: int):
             db.execute('CREATE TABLE IF NOT EXISTS trade_overview_messages (guild_id INTEGER NOT NULL, page INTEGER NOT NULL, message_id INTEGER NOT NULL, PRIMARY KEY(guild_id,page))')
             rows = db.execute('SELECT name, stock FROM trade_items WHERE guild_id=? ORDER BY name COLLATE NOCASE', (guild_id,)).fetchall()
             saved = db.execute('SELECT page, message_id FROM trade_overview_messages WHERE guild_id=? ORDER BY page', (guild_id,)).fetchall()
+
+        # Recover previously posted overview messages if the saved message-ID table was
+        # lost/reset, so a stock change edits the existing list instead of duplicating it.
+        if not saved:
+            recovered = {}
+            async for old_message in channel.history(limit=100):
+                if old_message.author.id == bot.user.id and old_message.content.startswith('📦 **Lagerübersicht · Seite '):
+                    try:
+                        page_text = old_message.content.split('Seite ', 1)[1].split('/', 1)[0]
+                        recovered[int(page_text) - 1] = old_message.id
+                    except (ValueError, IndexError):
+                        continue
+            if recovered:
+                with _connect() as db:
+                    for page, message_id in recovered.items():
+                        db.execute(
+                            'INSERT OR REPLACE INTO trade_overview_messages(guild_id,page,message_id) VALUES(?,?,?)',
+                            (guild_id, page, message_id),
+                        )
+                saved = [{'page': page, 'message_id': message_id} for page, message_id in sorted(recovered.items())]
         lines = [str(row['name']) + ' — Bestand: ' + str(row['stock']) for row in rows]
         chunks, current = [], []
         for line in lines:
