@@ -8,6 +8,9 @@ from discord.ext import commands
 
 from app.core.database import get_guild_setting
 
+# Nur Mitglieder mit dieser Serverrolle dürfen Moderationsbefehle ausführen.
+LEITUNGSEBENE_ROLE_ID = 1564044141002752072
+
 
 class ModerationModule(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -49,7 +52,7 @@ class ModerationModule(commands.Cog):
             pass
 
     @app_commands.command(name="timeout", description="Schaltet ein Mitglied für eine bestimmte Zeit stumm.")
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.checks.has_any_role(LEITUNGSEBENE_ROLE_ID)
     async def timeout(self, interaction: discord.Interaction, member: discord.Member, minuten: app_commands.Range[int, 1, 40320], grund: str = "Kein Grund angegeben") -> None:
         if interaction.guild and get_guild_setting(interaction.guild.id, "moderation_timeout_enabled") is False:
             await interaction.response.send_message("Diese Moderationsfunktion ist im Dashboard deaktiviert.", ephemeral=True)
@@ -65,7 +68,7 @@ class ModerationModule(commands.Cog):
         await interaction.response.send_message(f"{member.mention} wurde für {minuten} Minute(n) timeoutet. Grund: {grund}")
 
     @app_commands.command(name="kick", description="Entfernt ein Mitglied vom Server.")
-    @app_commands.checks.has_permissions(kick_members=True)
+    @app_commands.checks.has_any_role(LEITUNGSEBENE_ROLE_ID)
     async def kick(self, interaction: discord.Interaction, member: discord.Member, grund: str = "Kein Grund angegeben") -> None:
         if interaction.guild and get_guild_setting(interaction.guild.id, "moderation_kick_enabled") is False:
             await interaction.response.send_message("Diese Moderationsfunktion ist im Dashboard deaktiviert.", ephemeral=True)
@@ -81,7 +84,7 @@ class ModerationModule(commands.Cog):
         await interaction.response.send_message(f"{member} wurde gekickt. Grund: {grund}")
 
     @app_commands.command(name="ban", description="Bannt ein Mitglied vom Server.")
-    @app_commands.checks.has_permissions(ban_members=True)
+    @app_commands.checks.has_any_role(LEITUNGSEBENE_ROLE_ID)
     async def ban(self, interaction: discord.Interaction, member: discord.Member, grund: str = "Kein Grund angegeben") -> None:
         if interaction.guild and get_guild_setting(interaction.guild.id, "moderation_ban_enabled") is False:
             await interaction.response.send_message("Diese Moderationsfunktion ist im Dashboard deaktiviert.", ephemeral=True)
