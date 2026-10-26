@@ -70,28 +70,9 @@ def book(db, guild_id, kind, amount, description, user):
 
 
 def ensure_guild_items(guild_id: int, actor=None) -> int:
-    """Populate an empty guild inventory from the bundled Minecraft item catalogue."""
+    """Initialize schema only; never auto-create catalogue items."""
     init_db()
-    with connect() as db:
-        count = db.execute("SELECT COUNT(*) FROM trade_items WHERE guild_id=?", (guild_id,)).fetchone()[0]
-        if count:
-            return 0
-        source = Path(__file__).resolve().parents[3] / "data" / "minecraft_items_1_21_4.json"
-        try:
-            items = json.loads(source.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            log.exception("Minecraft item catalogue could not be loaded")
-            return 0
-        next_id = 1
-        for item in items:
-            db.execute(
-                "INSERT OR IGNORE INTO trade_items(guild_id,item_id,name,category,stock,sell_price,buy_price) VALUES(?,?,?,?,0,'0.00','0.00')",
-                (guild_id, next_id, item["name"], item.get("category", "Sonstiges")),
-            )
-            next_id += 1
-        if actor is not None:
-            book(db, guild_id, "INFO", 0, f"Automatischer Import beim ersten Lagerzugriff: {len(items)} Minecraft-Items", actor)
-        return len(items)
+    return 0
 
 
 async def item_autocomplete(interaction: discord.Interaction, current: str):
@@ -99,7 +80,6 @@ async def item_autocomplete(interaction: discord.Interaction, current: str):
     if not interaction.guild:
         return []
     try:
-        ensure_guild_items(interaction.guild.id, interaction.user)
         search = current.strip()
         with connect() as db:
             rows = db.execute(
@@ -154,6 +134,19 @@ class TradeModule(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         init_db()
+
+    @app_commands.command(name="lager_leeren", description="Löscht alle Lagerartikel dieses Servers, damit du sie selbst neu anlegen kannst.")
+    @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
+    async def lager_leeren(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        with connect() as db:
+            count = db.execute("SELECT COUNT(*) FROM trade_items WHERE guild_id=?", (interaction.guild.id,)).fetchone()[0]
+            db.execute("DELETE FROM trade_items WHERE guild_id=?", (interaction.guild.id,))
+        await refresh_inventory_overview(self.bot, interaction.guild.id)
+        await self.send_log(interaction, "Lagerartikel gelöscht", f"Alle {count} Lagerartikel dieses Servers wurden entfernt. Buchungshistorie bleibt erhalten.")
+        await interaction.followup.send(f"Fertig: {count} Lagerartikel wurden gelöscht. Die Buchungshistorie bleibt erhalten; neue Artikel kannst du über /lagerbestand selbst anlegen.", ephemeral=True)
 
     @app_commands.command(name="lageruebersicht_aktualisieren", description="Erstellt oder aktualisiert die dauerhafte Lagerliste.")
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
@@ -223,10 +216,7 @@ class TradeModule(commands.Cog):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
         await interaction.response.defer(ephemeral=True, thinking=True)
-        imported = ensure_guild_items(interaction.guild.id, interaction.user)
         view = InventoryView(self, interaction.guild.id, interaction.user.id)
-        if imported:
-            log.info("Imported %s catalogue items for guild %s", imported, interaction.guild.id)
         await interaction.edit_original_response(embed=view.make_embed(), view=view)
 
     @app_commands.autocomplete(artikel=item_autocomplete)
