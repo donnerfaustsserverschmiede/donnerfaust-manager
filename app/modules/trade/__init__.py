@@ -10,7 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from app.core.database import DB_PATH
-from app.modules.trade.overview import refresh as refresh_inventory_overview
+from app.modules.trade.overview import refresh as refresh_inventory_overview, restore_items_from_overview
 
 log = logging.getLogger(__name__)
 
@@ -225,6 +225,9 @@ class TradeModule(commands.Cog):
             return
 
         try:
+            restored = await restore_items_from_overview(self.bot, interaction.guild.id)
+            if restored:
+                log.warning("Recovered %s old inventory items from Discord history for guild %s", restored, interaction.guild.id)
             view = InventoryView(self, interaction.guild.id, interaction.user.id)
             embed = view.make_embed()
             await interaction.edit_original_response(content=None, embed=embed, view=view)
