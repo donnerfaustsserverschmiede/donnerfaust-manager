@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from app.core.database import DB_PATH
+from app.modules.trade.overview import refresh as refresh_inventory_overview
 
 log = logging.getLogger(__name__)
 
@@ -201,6 +202,7 @@ class TradeModule(commands.Cog):
                        (interaction.guild.id, item["name"], "EINLAGERUNG" if delta > 0 else "AUSLAGERUNG", menge, "0", "0", interaction.user.id, str(interaction.user), notiz))
             book(db, interaction.guild.id, "INFO", 0, f"Lager {item['name']}: {item['stock']} -> {after}; {notiz}", interaction.user)
         await interaction.response.send_message(f"**{item['name']}**: {item['stock']} → **{after}** Stück.")
+        await refresh_inventory_overview(self.bot, interaction.guild.id)
         await self.send_log(interaction, "Lagerbewegung", f"Artikel: {item['name']}\nÄnderung: {delta*menge:+}\nBestand: {item['stock']} → {after}\nVon: {interaction.user.mention}\nNotiz: {notiz or '–'}")
 
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
