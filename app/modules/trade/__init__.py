@@ -301,6 +301,7 @@ class TradeModule(commands.Cog):
                      f"{kind}: {menge} x {item['name']} @ {fmt(unit)} · Partner: {partner}", interaction.user)
             await interaction.response.send_message(f"**{kind.title()} gebucht**\nArtikel: {item['name']} × {menge}\nPartner: {discord.utils.escape_markdown(partner)}\nEinzelpreis: {fmt(unit)}\nGesamt: **{fmt(total)}**\nBestand: {item['stock']} → **{after}**")
             await self.send_log(interaction, f"{kind.title()} gebucht", f"{item['name']} × {menge}\nPartner: {partner}\nGesamt: {fmt(total)}\nBestand: {item['stock']} → {after}\nVon: {interaction.user.mention}")
+            await refresh_inventory_overview(self.bot, interaction.guild.id)
         except (ValueError, sqlite3.Error):
             log.exception("Trade failed")
             await interaction.response.send_message("Buchung fehlgeschlagen. Prüfe Eingaben und Datenbank.", ephemeral=True)
