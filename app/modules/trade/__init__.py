@@ -234,6 +234,7 @@ class TradeModule(commands.Cog):
             await interaction.response.send_message("Buchung fehlgeschlagen. Prüfe Eingaben und Datenbank.", ephemeral=True)
 
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
+    @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="verkauf", description="Verkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def verkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], kunde: str,
@@ -241,6 +242,7 @@ class TradeModule(commands.Cog):
         await self.trade(interaction, artikel, menge, kunde, einzelpreis, "VERKAUF")
 
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
+    @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="einkauf", description="Einkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def einkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], lieferant: str,
