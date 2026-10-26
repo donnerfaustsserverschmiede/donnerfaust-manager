@@ -522,23 +522,60 @@ class StockMovementModal(discord.ui.Modal, title="Lagerbestand anpassen"):
 
 
 class InventoryView(discord.ui.View):
+    PAGE_SIZE = 25
+
     def __init__(self, module, guild_id, user_id):
         super().__init__(timeout=300)
         self.module, self.guild_id, self.user_id = module, guild_id, user_id
         self.selected_item, self.selected_action = None, None
-        with connect() as db:
-            rows = db.execute("SELECT name,category,stock FROM trade_items WHERE guild_id=? ORDER BY name COLLATE NOCASE LIMIT 25", (guild_id,)).fetchall()
-        self.add_item(InventoryItemSelect(rows))
+        self.page = 0
+        self._load_item_select()
         self.add_item(StockActionSelect())
 
-    def make_embed(self):
+    def _page_data(self):
         with connect() as db:
-            rows = db.execute("SELECT name,category,stock FROM trade_items WHERE guild_id=? ORDER BY category COLLATE NOCASE,name COLLATE NOCASE LIMIT 25", (self.guild_id,)).fetchall()
             total = db.execute("SELECT COUNT(*) FROM trade_items WHERE guild_id=?", (self.guild_id,)).fetchone()[0]
+            pages = max(1, (total + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+            self.page = min(max(0, self.page), pages - 1)
+            rows = db.execute(
+                "SELECT name,category,stock FROM trade_items WHERE guild_id=? ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?",
+                (self.guild_id, self.PAGE_SIZE, self.page * self.PAGE_SIZE),
+            ).fetchall()
+        return rows, total, pages
+
+    def _load_item_select(self):
+        rows, _, _ = self._page_data()
+        existing = next((child for child in self.children if isinstance(child, InventoryItemSelect)), None)
+        if existing:
+            self.remove_item(existing)
+        self.add_item(InventoryItemSelect(rows))
+
+    def make_embed(self):
+        rows, total, pages = self._page_data()
         lines = [f"**{discord.utils.escape_markdown(r['name'])}** · {r['category']} — Bestand: **{r['stock']}**" for r in rows]
-        embed = discord.Embed(title=f"📦 Zentrales Lager · {total} Artikel", description="\n".join(lines)[:3900] or "Noch keine Artikel. Nutze **+ Artikel hinzufügen**.", color=discord.Color.blurple())
-        embed.set_footer(text="Artikel auswählen → Eingabe/Ausgabe wählen → Menge eingeben und speichern.")
+        embed = discord.Embed(
+            title=f"📦 Zentrales Lager · {total} Artikel",
+            description="\n".join(lines)[:3900] or "Noch keine Artikel. Nutze **+ Artikel hinzufügen**.",
+            color=discord.Color.blurple(),
+        )
+        embed.set_footer(text=f"Seite {self.page + 1}/{pages} · Artikel auswählen → Eingabe/Ausgabe wählen → Menge eingeben und speichern.")
         return embed
+
+    async def _change_page(self, interaction: discord.Interaction, delta: int):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        _, _, pages = self._page_data()
+        self.page = min(max(0, self.page + delta), pages - 1)
+        self._load_item_select()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="◀ Zurück", style=discord.ButtonStyle.secondary, row=3)
+    async def previous_page_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._change_page(interaction, -1)
+
+    @discord.ui.button(label="Weiter ▶", style=discord.ButtonStyle.secondary, row=3)
+    async def next_page_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._change_page(interaction, 1)
 
     @discord.ui.button(label="+ Artikel hinzufügen", style=discord.ButtonStyle.success, row=2)
     async def add_item_button(self, interaction: discord.Interaction, button: discord.ui.Button):
