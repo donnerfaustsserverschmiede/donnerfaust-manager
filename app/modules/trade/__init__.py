@@ -70,18 +70,29 @@ def book(db, guild_id, kind, amount, description, user):
 
 
 async def item_autocomplete(interaction: discord.Interaction, current: str):
-    """Suggest existing inventory items for consistent slash-command booking."""
+    """Filter inventory choices by the beginning of the entered article name."""
     if not interaction.guild:
         return []
+
+    search = current.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     try:
+        init_db()
         with connect() as db:
             rows = db.execute(
-                "SELECT name, stock, category FROM trade_items WHERE guild_id=? AND name LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY name COLLATE NOCASE LIMIT 25",
-                (interaction.guild.id, f"%{current.strip().replace(chr(92), chr(92)*2).replace(chr(37), chr(92)+chr(37)).replace(chr(95), chr(92)+chr(95))}%"),
+                """SELECT name, stock FROM trade_items
+                   WHERE guild_id = ? AND name LIKE ? ESCAPE '\\\\' COLLATE NOCASE
+                   ORDER BY name COLLATE NOCASE LIMIT 25""",
+                (interaction.guild.id, f"{search}%"),
             ).fetchall()
-        return [app_commands.Choice(name=f"{row['name']} · Bestand {row['stock']}", value=row['name']) for row in rows]
-    except sqlite3.Error:
-        log.exception("Item autocomplete failed")
+        return [
+            app_commands.Choice(
+                name=f"{row['name']} · Bestand {row['stock']}"[:100],
+                value=row["name"][:100],
+            )
+            for row in rows
+        ]
+    except (sqlite3.Error, TypeError, ValueError):
+        log.exception("Item autocomplete failed for guild %s", interaction.guild.id)
         return []
 
 
