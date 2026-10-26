@@ -74,3 +74,55 @@ async def refresh(bot, guild_id: int):
                     db.execute('DELETE FROM trade_overview_messages WHERE guild_id=? AND page=?', (guild_id, page))
     except (discord.Forbidden, discord.HTTPException, sqlite3.Error):
         log.exception('Could not refresh inventory overview')
+
+
+async def restore_items_from_overview(bot, guild_id: int) -> int:
+    """Restore item names and stock from the persistent Discord overview if SQLite is empty."""
+    with _connect() as db:
+        db.execute('''CREATE TABLE IF NOT EXISTS trade_items (
+            guild_id INTEGER NOT NULL, item_id INTEGER NOT NULL, name TEXT NOT NULL COLLATE NOCASE,
+            category TEXT NOT NULL DEFAULT 'Sonstiges', stock INTEGER NOT NULL DEFAULT 0 CHECK(stock>=0),
+            sell_price TEXT NOT NULL DEFAULT '0.00', buy_price TEXT NOT NULL DEFAULT '0.00',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(guild_id,item_id), UNIQUE(guild_id,name))''')
+        existing = db.execute('SELECT COUNT(*) FROM trade_items WHERE guild_id=?', (guild_id,)).fetchone()[0]
+    if existing:
+        return 0
+
+    channel = bot.get_channel(CHANNEL_ID) or await bot.fetch_channel(CHANNEL_ID)
+    if not isinstance(channel, discord.TextChannel):
+        return 0
+
+    recovered = {}
+    async for message in channel.history(limit=500):
+        if message.author.id != bot.user.id or not message.content.startswith('📦 **Lagerübersicht · Seite '):
+            continue
+        for line in message.content.splitlines()[1:]:
+            if ' — Bestand: ' not in line:
+                continue
+            name, raw_stock = line.rsplit(' — Bestand: ', 1)
+            name = name.strip()
+            try:
+                stock = int(raw_stock.strip())
+            except ValueError:
+                continue
+            if name and stock >= 0:
+                recovered.setdefault(name.casefold(), (name, stock))
+
+    if not recovered:
+        log.warning('No old inventory items found in Discord overview for guild %s', guild_id)
+        return 0
+
+    with _connect() as db:
+        next_id = db.execute('SELECT COALESCE(MAX(item_id),0)+1 FROM trade_items WHERE guild_id=?', (guild_id,)).fetchone()[0]
+        restored = 0
+        for name, stock in recovered.values():
+            db.execute('''INSERT OR IGNORE INTO trade_items
+                (guild_id,item_id,name,category,stock,sell_price,buy_price)
+                VALUES(?,?,?,'Sonstiges',?,'0.00','0.00')''',
+                (guild_id, next_id, name, stock))
+            if db.execute('SELECT changes()').fetchone()[0]:
+                restored += 1
+                next_id += 1
+    log.warning('Restored %s inventory items from Discord overview for guild %s', restored, guild_id)
+    return restored
