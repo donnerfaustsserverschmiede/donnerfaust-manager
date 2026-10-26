@@ -215,9 +215,32 @@ class TradeModule(commands.Cog):
     async def lagerbestand(self, interaction: discord.Interaction):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        view = InventoryView(self, interaction.guild.id, interaction.user.id)
-        await interaction.edit_original_response(embed=view.make_embed(), view=view)
+
+        # Acknowledge immediately so Discord's 3-second interaction deadline is met.
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.HTTPException:
+            log.exception("Could not acknowledge /lagerbestand interaction (guild=%s, user=%s)",
+                          interaction.guild.id, interaction.user.id)
+            return
+
+        try:
+            view = InventoryView(self, interaction.guild.id, interaction.user.id)
+            embed = view.make_embed()
+            await interaction.edit_original_response(content=None, embed=embed, view=view)
+            log.info("/lagerbestand opened successfully (guild=%s, user=%s)",
+                     interaction.guild.id, interaction.user.id)
+        except Exception:
+            log.exception("/lagerbestand failed while building or sending inventory view (guild=%s, user=%s)",
+                          interaction.guild.id, interaction.user.id)
+            try:
+                await interaction.edit_original_response(
+                    content="Das Lager konnte gerade nicht geladen werden. Der Fehler wurde protokolliert; bitte versuche es gleich erneut.",
+                    embed=None,
+                    view=None,
+                )
+            except Exception:
+                log.exception("Could not send /lagerbestand failure message (guild=%s)", interaction.guild.id)
 
     @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="artikel_loeschen", description="Löscht einen Lagerartikel mit Bestand 0.")
