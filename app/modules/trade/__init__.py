@@ -66,6 +66,22 @@ def book(db, guild_id, kind, amount, description, user):
                (guild_id, kind, str(amount), description[:500], user.id, str(user)[:100]))
 
 
+async def item_autocomplete(interaction: discord.Interaction, current: str):
+    """Suggest existing inventory items for consistent slash-command booking."""
+    if not interaction.guild:
+        return []
+    try:
+        with connect() as db:
+            rows = db.execute(
+                "SELECT name, stock, category FROM trade_items WHERE guild_id=? AND name LIKE ? COLLATE NOCASE ORDER BY name COLLATE NOCASE LIMIT 25",
+                (interaction.guild.id, f"%{current.strip()}%"),
+            ).fetchall()
+        return [app_commands.Choice(name=f"{row['name']} · Bestand {row['stock']}", value=row['name']) for row in rows]
+    except sqlite3.Error:
+        log.exception("Item autocomplete failed")
+        return []
+
+
 class TradeModule(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -117,6 +133,7 @@ class TradeModule(commands.Cog):
         view = InventoryView(self, interaction.guild.id, interaction.user.id)
         await interaction.response.send_message(embed=view.make_embed(), view=view, ephemeral=True)
 
+    @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="artikel_loeschen", description="Löscht einen Lagerartikel mit Bestand 0.")
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
     async def artikel_loeschen(self, interaction: discord.Interaction, artikel: str):
@@ -152,17 +169,20 @@ class TradeModule(commands.Cog):
         await self.send_log(interaction, "Lagerbewegung", f"Artikel: {item['name']}\nÄnderung: {delta*menge:+}\nBestand: {item['stock']} → {after}\nVon: {interaction.user.mention}\nNotiz: {notiz or '–'}")
 
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
+    @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="einlagern", description="Bucht Ressourcen ins Lager.")
     async def einlagern(self, interaction: discord.Interaction, artikel: str,
                         menge: app_commands.Range[int, 1, 100000000], notiz: str = ""):
         await self.change_stock(interaction, artikel, menge, 1, notiz)
 
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
+    @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="auslagern", description="Bucht Ressourcen aus dem Lager aus.")
     async def auslagern(self, interaction: discord.Interaction, artikel: str,
                         menge: app_commands.Range[int, 1, 100000000], notiz: str = ""):
         await self.change_stock(interaction, artikel, menge, -1, notiz)
 
+    @app_commands.autocomplete(artikel=item_autocomplete)
     @app_commands.command(name="preis_setzen", description="Setzt Verkaufspreis und optional Einkaufspreis.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def preis_setzen(self, interaction: discord.Interaction, artikel: str,
