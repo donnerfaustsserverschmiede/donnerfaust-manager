@@ -43,6 +43,53 @@ class DonnerfaustBot(commands.Bot):
         except Exception:
             log.exception("Could not sync application commands.")
 
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        """Audit every successfully received slash/application command to the dedicated channel."""
+        if interaction.type is not discord.InteractionType.application_command:
+            return
+        if not interaction.guild:
+            return
+
+        channel_id = 1564254704068853901
+
+        def format_options(options):
+            lines = []
+            for option in options or []:
+                name = str(option.get("name", "Angabe"))
+                if "options" in option:
+                    lines.append(f"{name}:")
+                    lines.extend("  " + line for line in format_options(option.get("options")))
+                elif "value" in option:
+                    lines.append(f"{name}: {option['value']}")
+            return lines
+
+        try:
+            channel = self.get_channel(channel_id)
+            if channel is None:
+                channel = await self.fetch_channel(channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                log.error("Audit channel %s is not a text channel", channel_id)
+                return
+
+            data = interaction.data or {}
+            command_name = str(data.get("name", "Unbekannter Befehl"))
+            options = format_options(data.get("options", []))
+            embed = discord.Embed(
+                title=f"📝 Slash-Befehl ausgeführt: /{command_name}",
+                description="\n".join(options)[:3500] if options else "Keine zusätzlichen Angaben.",
+                color=discord.Color.gold(),
+                timestamp=discord.utils.utcnow(),
+            )
+            embed.add_field(name="Nutzer", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+            embed.add_field(name="Server", value=f"{interaction.guild.name} ({interaction.guild.id})", inline=False)
+            if interaction.channel:
+                embed.add_field(name="Kanal", value=f"{interaction.channel.mention} ({interaction.channel.id})", inline=False)
+            await channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+            log.exception("Could not write slash-command audit entry")
+        except Exception:
+            log.exception("Unexpected error while writing slash-command audit entry")
+
     async def on_message(self, message: discord.Message) -> None:
         """Always route incoming messages through discord.py prefix command parsing."""
         if message.author.bot:
