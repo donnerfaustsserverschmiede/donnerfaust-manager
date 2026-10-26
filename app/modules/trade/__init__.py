@@ -86,8 +86,8 @@ class TradeModule(commands.Cog):
     @app_commands.command(name="artikel_anlegen", description="Legt einen Artikel im zentralen Lager an.")
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID)
     async def artikel_anlegen(self, interaction: discord.Interaction, name: str, kategorie: str = "Sonstiges",
-                              verkaufspreis: app_commands.Range[float, 0, 100000000] = 0,
-                              einkaufspreis: app_commands.Range[float, 0, 100000000] = 0):
+                              verkaufspreis: app_commands.Range[float, 0.0, 100000000.0] = 0,
+                              einkaufspreis: app_commands.Range[float, 0.0, 100000000.0] = 0):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
         name = name.strip()
@@ -166,8 +166,8 @@ class TradeModule(commands.Cog):
     @app_commands.command(name="preis_setzen", description="Setzt Verkaufspreis und optional Einkaufspreis.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def preis_setzen(self, interaction: discord.Interaction, artikel: str,
-                           verkaufspreis: app_commands.Range[float, 0, 100000000],
-                           einkaufspreis: app_commands.Range[float, 0, 100000000] | None = None):
+                           verkaufspreis: app_commands.Range[float, 0.0, 100000000.0],
+                           einkaufspreis: app_commands.Range[float, 0.0, 100000000.0] | None = None):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
         try:
@@ -217,19 +217,19 @@ class TradeModule(commands.Cog):
     @app_commands.command(name="verkauf", description="Verkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def verkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], kunde: str,
-                      einzelpreis: app_commands.Range[float, 0.01, 100000000]):
+                      einzelpreis: app_commands.Range[float, 0.01, 100000000.0]):
         await self.trade(interaction, artikel, menge, kunde, einzelpreis, "VERKAUF")
 
     @app_commands.checks.has_any_role(LEITUNG_ROLE_ID, MITARBEITER_ROLE_ID)
     @app_commands.command(name="einkauf", description="Einkauf mit dem manuell vereinbarten Stückpreis buchen.")
     async def einkauf(self, interaction: discord.Interaction, artikel: str,
                       menge: app_commands.Range[int, 1, 100000000], lieferant: str,
-                      einzelpreis: app_commands.Range[float, 0.01, 100000000]):
+                      einzelpreis: app_commands.Range[float, 0.01, 100000000.0]):
         await self.trade(interaction, artikel, menge, lieferant, einzelpreis, "EINKAUF")
 
     @app_commands.command(name="startkapital", description="Erfasst das vorhandene Startkapital einmalig im Kassenbuch.")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def startkapital(self, interaction: discord.Interaction, betrag: app_commands.Range[float, 0.01, 100000000], notiz: str = "Anfangsbestand"):
+    async def startkapital(self, interaction: discord.Interaction, betrag: app_commands.Range[float, 0.01, 100000000.0], notiz: str = "Anfangsbestand"):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
         try:
@@ -253,7 +253,7 @@ class TradeModule(commands.Cog):
     ])
     async def kassenbuch_buchen(self, interaction: discord.Interaction,
                                 art: app_commands.Choice[str],
-                                betrag: app_commands.Range[float, 0.01, 100000000],
+                                betrag: app_commands.Range[float, 0.01, 100000000.0],
                                 beschreibung: str):
         if not interaction.guild:
             return await interaction.response.send_message("Nur auf einem Server nutzbar.", ephemeral=True)
