@@ -73,8 +73,8 @@ async def item_autocomplete(interaction: discord.Interaction, current: str):
     try:
         with connect() as db:
             rows = db.execute(
-                "SELECT name, stock, category FROM trade_items WHERE guild_id=? AND name LIKE ? COLLATE NOCASE ORDER BY name COLLATE NOCASE LIMIT 25",
-                (interaction.guild.id, f"%{current.strip()}%"),
+                "SELECT name, stock, category FROM trade_items WHERE guild_id=? AND name LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY name COLLATE NOCASE LIMIT 25",
+                (interaction.guild.id, f"%{current.strip().replace(chr(92), chr(92)*2).replace(chr(37), chr(92)+chr(37)).replace(chr(95), chr(92)+chr(95))}%"),
             ).fetchall()
         return [app_commands.Choice(name=f"{row['name']} · Bestand {row['stock']}", value=row['name']) for row in rows]
     except sqlite3.Error:
