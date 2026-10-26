@@ -521,6 +521,23 @@ class StockMovementModal(discord.ui.Modal, title="Lagerbestand anpassen"):
         await refresh_inventory_overview(view.module.bot, view.guild_id)
 
 
+class InventorySearchModal(discord.ui.Modal, title="Artikel im Lager suchen"):
+    query = discord.ui.TextInput(label="Artikelname", placeholder="z. B. Cobblestone, Oak, Diamond", max_length=80, required=False)
+
+    def __init__(self, view):
+        super().__init__()
+        self.inventory_view = view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        view = self.inventory_view
+        if interaction.user.id != view.user_id or not interaction.guild or interaction.guild.id != view.guild_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        view.search_query = str(self.query.value or "").strip()
+        view.page = 0
+        view._load_item_select()
+        await interaction.response.edit_message(embed=view.make_embed(), view=view)
+
+
 class InventoryView(discord.ui.View):
     PAGE_SIZE = 25
 
@@ -528,18 +545,23 @@ class InventoryView(discord.ui.View):
         super().__init__(timeout=300)
         self.module, self.guild_id, self.user_id = module, guild_id, user_id
         self.selected_item, self.selected_action = None, None
+        self.search_query = ""
         self.page = 0
         self._load_item_select()
         self.add_item(StockActionSelect())
 
     def _page_data(self):
         with connect() as db:
-            total = db.execute("SELECT COUNT(*) FROM trade_items WHERE guild_id=?", (self.guild_id,)).fetchone()[0]
+            search = f"%{self.search_query}%"
+            total = db.execute(
+                "SELECT COUNT(*) FROM trade_items WHERE guild_id=? AND name LIKE ? COLLATE NOCASE",
+                (self.guild_id, search),
+            ).fetchone()[0]
             pages = max(1, (total + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
             self.page = min(max(0, self.page), pages - 1)
             rows = db.execute(
-                "SELECT name,category,stock FROM trade_items WHERE guild_id=? ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?",
-                (self.guild_id, self.PAGE_SIZE, self.page * self.PAGE_SIZE),
+                "SELECT name,category,stock FROM trade_items WHERE guild_id=? AND name LIKE ? COLLATE NOCASE ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?",
+                (self.guild_id, search, self.PAGE_SIZE, self.page * self.PAGE_SIZE),
             ).fetchall()
         return rows, total, pages
 
@@ -553,12 +575,15 @@ class InventoryView(discord.ui.View):
     def make_embed(self):
         rows, total, pages = self._page_data()
         lines = [f"**{discord.utils.escape_markdown(r['name'])}** · {r['category']} — Bestand: **{r['stock']}**" for r in rows]
+        heading = f"📦 Zentrales Lager · {total} Artikel"
+        if self.search_query:
+            heading += f" · Suche: {self.search_query[:60]}"
         embed = discord.Embed(
-            title=f"📦 Zentrales Lager · {total} Artikel",
-            description="\n".join(lines)[:3900] or "Noch keine Artikel. Nutze **+ Artikel hinzufügen**.",
+            title=heading,
+            description="\n".join(lines)[:3900] or ("Keine Treffer. Suche ändern oder zurücksetzen." if self.search_query else "Noch keine Artikel. Nutze **+ Artikel hinzufügen**."),
             color=discord.Color.blurple(),
         )
-        embed.set_footer(text=f"Seite {self.page + 1}/{pages} · Artikel auswählen → Eingabe/Ausgabe wählen → Menge eingeben und speichern.")
+        embed.set_footer(text=f"Seite {self.page + 1}/{pages} · 🔎 Suche nutzen, dann Artikel auswählen → Eingabe/Ausgabe → Menge speichern.")
         return embed
 
     async def _change_page(self, interaction: discord.Interaction, delta: int):
@@ -576,6 +601,21 @@ class InventoryView(discord.ui.View):
     @discord.ui.button(label="Weiter ▶", style=discord.ButtonStyle.secondary, row=3)
     async def next_page_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._change_page(interaction, 1)
+
+    @discord.ui.button(label="🔎 Artikel suchen", style=discord.ButtonStyle.secondary, row=2)
+    async def search_item_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        await interaction.response.send_modal(InventorySearchModal(self))
+
+    @discord.ui.button(label="Suche zurücksetzen", style=discord.ButtonStyle.secondary, row=2)
+    async def clear_search_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("Dieses Lagerfenster gehört zu einer anderen Person.", ephemeral=True)
+        self.search_query = ""
+        self.page = 0
+        self._load_item_select()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
 
     @discord.ui.button(label="+ Artikel hinzufügen", style=discord.ButtonStyle.success, row=2)
     async def add_item_button(self, interaction: discord.Interaction, button: discord.ui.Button):
